@@ -1,40 +1,24 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"html"
+	"crypto/rand"
 	"net/http"
+	"time"
+
+	"github.com/devthenet-labs/beatbattle-api/internal/battle"
+	"github.com/devthenet-labs/beatbattle-api/internal/httpapi"
+	"github.com/devthenet-labs/beatbattle-api/internal/memstore"
 )
 
-// page is the service's one page.
-const page = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>%[1]s</title>
-</head>
-<body>
-<h1>%[1]s</h1>
-<p>Revision <code>%[2]s</code>.</p>
-</body>
-</html>
-`
-
-// newHandler serves the page at / and the readiness check at /healthz.
+// newHandler wires the production adapters (memory store and queue, the wall
+// clock, crypto/rand) into the /api handler.
 func newHandler(revision string) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "revision": revision})
-	})
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprintf(w, page, html.EscapeString("beatbattle-api"), html.EscapeString(revision))
-	})
-	return withSecurityHeaders(mux)
+	return newHandlerWith(battle.NewService(memstore.NewStore(), memstore.NewQueue(), time.Now, rand.Reader), revision)
+}
+
+// newHandlerWith serves /api over svc, behind the security headers.
+func newHandlerWith(svc *battle.Service, revision string) http.Handler {
+	return withSecurityHeaders(httpapi.New(svc, revision))
 }
 
 // withSecurityHeaders sets the headers every response carries.
