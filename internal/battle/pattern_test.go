@@ -76,7 +76,7 @@ func TestParseInput(t *testing.T) {
 		ok         bool
 	}{
 		{"minimal", `{"name":"a","author":"b","bpm":90,"tracks":{}}`, true},
-		{"server fields ignored", `{"id":"p_x","votes":9,"createdAt":"2020-01-01T00:00:00Z","name":"a"}`, true},
+		{"server fields ignored", `{"id":"p_x","votes":9,"rating":1016,"createdAt":"2020-01-01T00:00:00Z","name":"a"}`, true},
 		{"unknown field", `{"name":"a","extra":1}`, false},
 		{"bpm fraction", `{"bpm":120.5}`, false},
 		{"bpm string", `{"bpm":"120"}`, false},

@@ -18,6 +18,7 @@ Errors are JSON `{"error": "<message>"}`. Request bodies are limited to 16 KiB (
 | `GET /api/patterns/{id}`             | the pattern, or 404                                                                      |
 | `POST /api/patterns/{id}/votes`      | 200 `{"votes": N}`, or 404                                                               |
 | `GET /api/leaderboard`               | bare JSON array: top 10 by votes, ties to the earlier `createdAt`                        |
+| `GET /api/ratings`                   | bare JSON array: top 20 patterns by rating, highest first, each {id, name, author, rating} |
 | `POST /api/patterns/{id}/renders`    | 202 `{"renderId":"r_…","patternId":"…","status":"pending"}`, or 404                      |
 | `GET /api/renders/{id}`              | that status (always `pending` in v0), or 404                                             |
 | `POST /api/battles`                  | 201 with the new battle (`id` is `b_` + 6 hex); 400 if either pattern id is missing or the two ids are equal; 404 if either pattern id does not exist; past 1000 battles 507 `store full` |
@@ -25,16 +26,18 @@ Errors are JSON `{"error": "<message>"}`. Request bodies are limited to 16 KiB (
 | `GET /api/battles/{id}`              | the battle, or 404                                                                       |
 | `POST /api/battles/{id}/votes`       | 200 with the updated battle; 400 for a missing/invalid `side`; 404 for an unknown battle id |
 
-A pattern is `{id, name, author, bpm, swing, tracks:{kick,snare,hat}, votes, createdAt}`; each track is exactly 16
-booleans. `name` is 1-40 characters after trimming with no control characters, `author` 1-24 of `[A-Za-z0-9_-]`, `bpm` an
-integer 60-200, `swing` an integer 0-60. Unknown fields and tracks are rejected; `id`, `votes` and `createdAt` are
-ignored on input.
+A pattern is `{id, name, author, bpm, swing, tracks:{kick,snare,hat}, votes, rating, createdAt}`; each track is exactly
+16 booleans. `name` is 1-40 characters after trimming with no control characters, `author` 1-24 of `[A-Za-z0-9_-]`,
+`bpm` an integer 60-200, `swing` an integer 0-60. `rating` starts at 1000 and moves only through battle votes (Elo,
+K=32). Unknown fields and tracks are rejected; `id`, `votes`, `rating` and `createdAt` are ignored on input.
 
 A battle is `{id, patternA, patternB, votesA, votesB, createdAt}`, where `patternA`/`patternB` are the full pattern
 shape above, joined live from the pattern store on every read; the battle id is `b_` followed by 6 lowercase hex
 characters, drawn the same way as pattern (`p_`) and render (`r_`) ids. `POST /api/battles/{id}/votes` takes
 `{"side": "a"}` or `{"side": "b"}`; voting on a battle side also adds one vote to that pattern's normal vote count,
-so it also rises on `GET /api/leaderboard`.
+so it also rises on `GET /api/leaderboard`, and updates both patterns' Elo rating (K=32, from the ratings as they
+stood before this vote, rounded to the nearest whole number; the voted-for pattern is the winner). The full battle
+view returned by that endpoint already carries both patterns' updated rating and votes inside `patternA`/`patternB`.
 
 ## Layout
 

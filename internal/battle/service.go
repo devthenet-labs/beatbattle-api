@@ -47,7 +47,7 @@ func (s *Service) Create(in Input) (Pattern, error) {
 		}
 		p := Pattern{
 			ID: id, Name: in.Name, Author: in.Author, BPM: in.BPM, Swing: in.Swing,
-			Tracks: in.Tracks, CreatedAt: s.now().UTC().Truncate(time.Second),
+			Tracks: in.Tracks, Rating: 1000, CreatedAt: s.now().UTC().Truncate(time.Second),
 		}.Clone()
 		switch err := s.store.Add(p); err {
 		case nil:
@@ -96,6 +96,33 @@ func Rank(patterns []Pattern, n int) []Pattern {
 		ranked = ranked[:n]
 	}
 	return ranked
+}
+
+// RankByRating orders patterns (given in insertion order) by rating,
+// highest first. Ties go to the earlier createdAt, then to the earlier
+// insertion. It returns at most n patterns and does not modify its input.
+func RankByRating(patterns []Pattern, n int) []Pattern {
+	ranked := append([]Pattern{}, patterns...)
+	sort.SliceStable(ranked, func(i, j int) bool {
+		if ranked[i].Rating != ranked[j].Rating {
+			return ranked[i].Rating > ranked[j].Rating
+		}
+		return ranked[i].CreatedAt.Before(ranked[j].CreatedAt)
+	})
+	if len(ranked) > n {
+		ranked = ranked[:n]
+	}
+	return ranked
+}
+
+// Ratings returns the top patterns by rating, reduced to the ratings shape.
+func (s *Service) Ratings() []RatingEntry {
+	top := RankByRating(s.store.List(), RatingsTop)
+	out := make([]RatingEntry, len(top))
+	for i, p := range top {
+		out[i] = RatingEntry{ID: p.ID, Name: p.Name, Author: p.Author, Rating: p.Rating}
+	}
+	return out
 }
 
 // view builds the served BattleView from a battle and its two already
@@ -183,16 +210,34 @@ func (s *Service) ListBattles(limit int) []BattleView {
 
 // VoteBattle adds a vote to one side of a battle. The voted pattern also
 // gets a vote through Store.Vote, so it also rises on the main leaderboard.
+// It also updates both patterns' Elo rating, using the ratings as they stood
+// before this vote; a later vote on the same battle re-reads whatever
+// ratings stand at that time, so repeated votes compose rather than reset.
 func (s *Service) VoteBattle(id, side string) (BattleView, error) {
 	b, err := s.battles.Get(id)
 	if err != nil {
 		return BattleView{}, err
 	}
-	patternID := b.PatternAID
+	winnerID, loserID := b.PatternAID, b.PatternBID
 	if side == "b" {
-		patternID = b.PatternBID
+		winnerID, loserID = b.PatternBID, b.PatternAID
 	}
-	if _, err := s.store.Vote(patternID); err != nil {
+	winner, err := s.store.Get(winnerID)
+	if err != nil {
+		return BattleView{}, err
+	}
+	loser, err := s.store.Get(loserID)
+	if err != nil {
+		return BattleView{}, err
+	}
+	newWinnerRating, newLoserRating := Elo(winner.Rating, loser.Rating)
+	if err := s.store.SetRating(winnerID, newWinnerRating); err != nil {
+		return BattleView{}, err
+	}
+	if err := s.store.SetRating(loserID, newLoserRating); err != nil {
+		return BattleView{}, err
+	}
+	if _, err := s.store.Vote(winnerID); err != nil {
 		return BattleView{}, err
 	}
 	b, err = s.battles.Vote(id, side)

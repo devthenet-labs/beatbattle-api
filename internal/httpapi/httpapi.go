@@ -27,6 +27,7 @@ func New(svc *battle.Service, revision string) http.Handler {
 	mux.HandleFunc("GET /api/patterns/{id}", a.getPattern)
 	mux.HandleFunc("POST /api/patterns/{id}/votes", a.vote)
 	mux.HandleFunc("GET /api/leaderboard", a.leaderboard)
+	mux.HandleFunc("GET /api/ratings", a.ratings)
 	mux.HandleFunc("POST /api/battles", a.createBattle)
 	mux.HandleFunc("GET /api/battles", a.listBattles)
 	mux.HandleFunc("GET /api/battles/{id}", a.getBattle)
@@ -103,6 +104,10 @@ func (a *api) vote(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) leaderboard(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, a.svc.Leaderboard())
+}
+
+func (a *api) ratings(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, a.svc.Ratings())
 }
 
 func (a *api) createBattle(w http.ResponseWriter, r *http.Request) {

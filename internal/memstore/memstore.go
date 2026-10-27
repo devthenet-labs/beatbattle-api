@@ -56,6 +56,18 @@ func (s *Store) Vote(id string) (int, error) {
 	return s.items[i].Votes, nil
 }
 
+// SetRating implements battle.Store.
+func (s *Store) SetRating(id string, rating int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i, ok := s.byID[id]
+	if !ok {
+		return battle.ErrNotFound
+	}
+	s.items[i].Rating = rating
+	return nil
+}
+
 // List implements battle.Store.
 func (s *Store) List() []battle.Pattern {
 	s.mu.Lock()
