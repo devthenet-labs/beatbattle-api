@@ -1,6 +1,6 @@
-// beatbattle-api is a small HTTP service, the starting point maul init app
-// generated. It listens on one port, answers /healthz for readiness
-// checks and writes nothing to disk, so it runs with a read-only root
+// beatbattle-api is the Beat Battle api: patterns, votes, the leaderboard and
+// render requests under /api. It listens on one port, answers /api/healthz for
+// readiness checks and writes nothing to disk, so it runs with a read-only root
 // filesystem, as a maul preview runs it.
 package main
 
@@ -15,13 +15,18 @@ import (
 	"time"
 )
 
-// addr is the one port the runtime image exposes.
-const addr = ":8080"
+// defaultAddr is the one port the runtime image exposes; ADDR overrides it
+// for local runs.
+const defaultAddr = ":8080"
 
 // commitSHA is set at build time (-ldflags -X main.commitSHA=...).
 var commitSHA = "dev"
 
 func main() {
+	addr := defaultAddr
+	if v := os.Getenv("ADDR"); v != "" {
+		addr = v
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	server := &http.Server{

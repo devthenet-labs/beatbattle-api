@@ -1,28 +1,58 @@
 # beatbattle-api
 
-A small Go HTTP service, scaffolded by `maul init app` so that [maul](https://github.com/devthenet-labs/maul) can
-build intents in it and preview its pull requests. It listens on port 8080, answers `/healthz` once it is
-ready and writes nothing to disk.
+The Beat Battle api, served under `/api` on port 8080. People save 16-step drum patterns, vote on them, read the
+leaderboard and ask for WAV renders. It is scaffolded by `maul init app` so that
+[maul](https://github.com/devthenet-labs/maul) can build intents in it and preview its pull requests. Standard library
+only; it writes nothing to disk. The contract is shared with the other two repositories (`beatbattle-web` serves the UI
+at `/`, `beatbattle-render` synthesises WAV at `/render`); only the browser composes them, same-origin.
+
+## HTTP API
+
+Errors are JSON `{"error": "<message>"}`. Request bodies are limited to 16 KiB (413 beyond that). No auth yet.
+
+| Method and path                      | Result                                                                                   |
+| ------------------------------------ | ---------------------------------------------------------------------------------------- |
+| `GET /api/healthz`                   | `{"status":"ok","revision":"<sha>"}`                                                     |
+| `POST /api/patterns`                 | 201 with the stored pattern (`id` is `p_` + 6 hex); invalid input 400; past 1000 patterns 507 `store full` |
+| `GET /api/patterns?limit=N`          | bare JSON array, newest first; default 20, maximum 100 (larger is clamped; non-numeric or < 1 is 400) |
+| `GET /api/patterns/{id}`             | the pattern, or 404                                                                      |
+| `POST /api/patterns/{id}/votes`      | 200 `{"votes": N}`, or 404                                                               |
+| `GET /api/leaderboard`               | bare JSON array: top 10 by votes, ties to the earlier `createdAt`                        |
+| `POST /api/patterns/{id}/renders`    | 202 `{"renderId":"r_…","patternId":"…","status":"pending"}`, or 404                      |
+| `GET /api/renders/{id}`              | that status (always `pending` in v0), or 404                                             |
+
+A pattern is `{id, name, author, bpm, swing, tracks:{kick,snare,hat}, votes, createdAt}`; each track is exactly 16
+booleans. `name` is 1-40 characters after trimming with no control characters, `author` 1-24 of `[A-Za-z0-9_-]`, `bpm` an
+integer 60-200, `swing` an integer 0-60. Unknown fields and tracks are rejected; `id`, `votes` and `createdAt` are
+ignored on input.
+
+## Layout
+
+- `internal/battle`: the pure core (validation, `Store` and `RenderQueue` ports, `Service`, `Rank`). No `net/http`;
+  the clock and random source are injected.
+- `internal/memstore`: the in-memory adapters (a mutex and maps). A database and a real queue replace them later.
+- `internal/httpapi`: the thin HTTP adapter. `server.go` wires it with the real clock and `crypto/rand`.
 
 ## Develop
 
-Use Go 1.26.6.
+Use Go 1.26.6. The service listens on `:8080`; set `ADDR` (for example `ADDR=127.0.0.1:9090`) to change it.
 
 ```sh
 gofmt -l .
 go vet ./...
 go test -race ./...
 go run .
+curl -s localhost:8080/api/healthz
 ```
 
 The root `Dockerfile` builds the runtime image a preview runs: a static binary on distroless, uid 65532, no shell,
 listening on 8080. A preview runs it with a read-only root filesystem and no writable `/tmp`:
 
 ```sh
-docker build -t beatbattle-api:local .
+docker build -t bb-api:local .
 docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
-  -p 127.0.0.1:8080:8080 beatbattle-api:local
-curl -s localhost:8080/healthz
+  -p 127.0.0.1:8080:8080 bb-api:local
+curl -s localhost:8080/api/healthz
 ```
 
 `.maul/Dockerfile` is a different image: the one maul's coding agent works in, which is maul's agent base plus the
