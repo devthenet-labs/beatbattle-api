@@ -1,6 +1,7 @@
 package battle
 
 import (
+	"encoding/json"
 	"errors"
 	"math/rand"
 	"strings"
@@ -76,7 +77,7 @@ func TestParseInput(t *testing.T) {
 		ok         bool
 	}{
 		{"minimal", `{"name":"a","author":"b","bpm":90,"tracks":{}}`, true},
-		{"server fields ignored", `{"id":"p_x","votes":9,"rating":1016,"createdAt":"2020-01-01T00:00:00Z","name":"a"}`, true},
+		{"server fields ignored", `{"id":"p_x","parentId":"p_old","remixCount":3,"votes":9,"rating":1016,"createdAt":"2020-01-01T00:00:00Z","name":"a"}`, true},
 		{"unknown field", `{"name":"a","extra":1}`, false},
 		{"bpm fraction", `{"bpm":120.5}`, false},
 		{"bpm string", `{"bpm":"120"}`, false},
@@ -156,4 +157,85 @@ func oracle(in Input) bool {
 		}
 	}
 	return true
+}
+
+func validRemix() RemixInput {
+	return RemixInput{Name: "Four on the floor", Author: "brvtl"}
+}
+
+func TestValidateRemixInput(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*RemixInput)
+		ok     bool
+	}{
+		{"valid", func(*RemixInput) {}, true},
+		{"name trimmed", func(in *RemixInput) { in.Name = "  x  " }, true},
+		{"name blank", func(in *RemixInput) { in.Name = "   " }, false},
+		{"name 41 runes", func(in *RemixInput) { in.Name = strings.Repeat("é", 41) }, false},
+		{"name control", func(in *RemixInput) { in.Name = "a\tb" }, false},
+		{"author empty", func(in *RemixInput) { in.Author = "" }, false},
+		{"author 25", func(in *RemixInput) { in.Author = strings.Repeat("a", 25) }, false},
+		{"author outside charset", func(in *RemixInput) { in.Author = "bé" }, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := validRemix()
+			tc.mutate(&in)
+			_, err := in.Validate()
+			if (err == nil) != tc.ok {
+				t.Fatalf("Validate() error = %v, want ok=%v", err, tc.ok)
+			}
+			if err != nil && !errors.Is(err, ErrInvalid) {
+				t.Errorf("error %v does not wrap ErrInvalid", err)
+			}
+		})
+	}
+}
+
+func TestParseRemixInput(t *testing.T) {
+	cases := []struct {
+		name, body string
+		ok         bool
+	}{
+		{"minimal", `{"name":"a","author":"b"}`, true},
+		{"unknown field bpm", `{"name":"a","author":"b","bpm":120}`, false},
+		{"unknown field tracks", `{"name":"a","author":"b","tracks":{}}`, false},
+		{"not json", `nope`, false},
+		{"empty", ``, false},
+		{"trailing data", `{"name":"a","author":"b"} {"name":"c"}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseRemixInput(strings.NewReader(tc.body))
+			if (err == nil) != tc.ok {
+				t.Fatalf("ParseRemixInput() error = %v, want ok=%v", err, tc.ok)
+			}
+			if err != nil && !errors.Is(err, ErrInvalid) {
+				t.Errorf("error %v does not wrap ErrInvalid", err)
+			}
+		})
+	}
+}
+
+// TestPatternFieldOrder guards the served JSON key order the list
+// acceptance checks depend on: "id" must be immediately followed by
+// "parentId" then "remixCount", before "name" appears.
+func TestPatternFieldOrder(t *testing.T) {
+	p := Pattern{ID: "p_x", ParentID: "p_y", RemixCount: 2, Name: "n"}
+	b, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	idIdx := strings.Index(s, `"id"`)
+	parentIdx := strings.Index(s, `"parentId"`)
+	remixIdx := strings.Index(s, `"remixCount"`)
+	nameIdx := strings.Index(s, `"name"`)
+	if idIdx < 0 || parentIdx < 0 || remixIdx < 0 || nameIdx < 0 {
+		t.Fatalf("missing expected keys: %s", s)
+	}
+	if !(idIdx < parentIdx && parentIdx < remixIdx && remixIdx < nameIdx) {
+		t.Errorf("key order = id:%d parentId:%d remixCount:%d name:%d, want ascending", idIdx, parentIdx, remixIdx, nameIdx)
+	}
 }

@@ -119,6 +119,134 @@ func TestListNewestFirstAndLimits(t *testing.T) {
 	}
 }
 
+func TestRemix(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0})
+	orig, _ := svc.Create(input("orig"))
+	remix, err := svc.Remix(orig.ID, battle.RemixInput{Name: "remix", Author: "other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if remix.ID == orig.ID {
+		t.Fatal("remix got the same id as the original")
+	}
+	if remix.ParentID != orig.ID {
+		t.Errorf("ParentID = %q, want %q", remix.ParentID, orig.ID)
+	}
+	if remix.BPM != orig.BPM || remix.Swing != orig.Swing {
+		t.Errorf("remix bpm/swing = %d/%d, want %d/%d", remix.BPM, remix.Swing, orig.BPM, orig.Swing)
+	}
+	for name, steps := range orig.Tracks {
+		if got := remix.Tracks[name]; !trackEqual(got, steps) {
+			t.Errorf("remix track %q = %v, want %v", name, got, steps)
+		}
+	}
+	if remix.Name != "remix" || remix.Author != "other" {
+		t.Errorf("remix name/author = %q/%q, want remix/other", remix.Name, remix.Author)
+	}
+	if remix.Votes != 0 || remix.Rating != 1000 {
+		t.Errorf("remix votes/rating = %d/%d, want 0/1000", remix.Votes, remix.Rating)
+	}
+
+	remix.Tracks["kick"][1] = true
+	got, _ := svc.Get(orig.ID)
+	if got.Tracks["kick"][1] {
+		t.Error("original changed through the remix's slice")
+	}
+}
+
+func trackEqual(a, b []bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestRemixUnknownPattern(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0})
+	if _, err := svc.Remix("p_nope", battle.RemixInput{Name: "a", Author: "b"}); !errors.Is(err, battle.ErrNotFound) {
+		t.Errorf("err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestRemixInvalidInput(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0})
+	orig, _ := svc.Create(input("orig"))
+	if _, err := svc.Remix(orig.ID, battle.RemixInput{}); !errors.Is(err, battle.ErrInvalid) {
+		t.Errorf("err = %v, want ErrInvalid", err)
+	}
+	if got := len(svc.List(battle.MaxLimit)); got != 1 {
+		t.Errorf("store has %d patterns, want 1 (no pattern added)", got)
+	}
+}
+
+func TestRemixCount(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0, 3, 0, 0, 4, 0, 0})
+	orig, _ := svc.Create(input("orig"))
+	if got, _ := svc.Get(orig.ID); got.RemixCount != 0 {
+		t.Fatalf("fresh RemixCount = %d, want 0", got.RemixCount)
+	}
+	r1, err := svc.Remix(orig.ID, battle.RemixInput{Name: "r1", Author: "a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2, err := svc.Remix(orig.ID, battle.RemixInput{Name: "r2", Author: "a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := svc.Get(orig.ID); got.RemixCount != 2 {
+		t.Errorf("RemixCount after two remixes = %d, want 2", got.RemixCount)
+	}
+	if r1.RemixCount != 0 || r2.RemixCount != 0 {
+		t.Errorf("remixes' own RemixCount = %d, %d, want 0, 0", r1.RemixCount, r2.RemixCount)
+	}
+	if _, err := svc.Remix(r1.ID, battle.RemixInput{Name: "r1r", Author: "a"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := svc.Get(orig.ID); got.RemixCount != 2 {
+		t.Errorf("remixing a remix changed the original's count to %d, want still 2", got.RemixCount)
+	}
+	if got, _ := svc.Get(r1.ID); got.RemixCount != 1 {
+		t.Errorf("r1's RemixCount = %d, want 1", got.RemixCount)
+	}
+}
+
+func TestListAndLeaderboardCarryParentIDAndRemixCount(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0})
+	orig, _ := svc.Create(input("orig"))
+	remix, err := svc.Remix(orig.ID, battle.RemixInput{Name: "remix", Author: "a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Vote(orig.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	byID := map[string]battle.Pattern{}
+	for _, p := range svc.List(battle.MaxLimit) {
+		byID[p.ID] = p
+	}
+	if got := byID[orig.ID]; got.ParentID != "" || got.RemixCount != 1 {
+		t.Errorf("List() original = %+v, want ParentID=\"\" RemixCount=1", got)
+	}
+	if got := byID[remix.ID]; got.ParentID != orig.ID || got.RemixCount != 0 {
+		t.Errorf("List() remix = %+v, want ParentID=%q RemixCount=0", got, orig.ID)
+	}
+
+	board := svc.Leaderboard()
+	byID = map[string]battle.Pattern{}
+	for _, p := range board {
+		byID[p.ID] = p
+	}
+	if got := byID[orig.ID]; got.ParentID != "" || got.RemixCount != 1 {
+		t.Errorf("Leaderboard() original = %+v, want ParentID=\"\" RemixCount=1", got)
+	}
+}
+
 func TestVoteAndLeaderboard(t *testing.T) {
 	svc, c := newService(t, []byte{1, 0, 0, 2, 0, 0, 3, 0, 0})
 	a, _ := svc.Create(input("a"))

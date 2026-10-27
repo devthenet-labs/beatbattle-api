@@ -63,10 +63,14 @@ func TestRoutes(t *testing.T) {
 		{"vote", "POST", "/api/patterns/p_000001/votes", "", 200, `{"votes":1}`},
 		{"vote again", "POST", "/api/patterns/p_000001/votes", "", 200, `{"votes":2}`},
 		{"vote unknown", "POST", "/api/patterns/p_zzzzzz/votes", "", 404, `"error"`},
+		{"remix", "POST", "/api/patterns/p_000001/remix", `{"name":"remix","author":"other"}`, 201, `"parentId":"p_000001"`},
+		{"remix unknown", "POST", "/api/patterns/p_zzzzzz/remix", `{"name":"a","author":"b"}`, 404, `"error"`},
+		{"remix empty name", "POST", "/api/patterns/p_000001/remix", `{"name":"","author":"b"}`, 400, `"error"`},
+		{"remix unknown field", "POST", "/api/patterns/p_000001/remix", `{"name":"a","author":"b","bpm":120}`, 400, `"error"`},
 		{"leaderboard", "GET", "/api/leaderboard", "", 200, `"votes":2`},
 		{"render", "POST", "/api/patterns/p_000001/renders", "", 202, `"status":"pending"`},
 		{"render unknown pattern", "POST", "/api/patterns/p_zzzzzz/renders", "", 404, `"error"`},
-		{"render status", "GET", "/api/renders/r_000003", "", 200, `"patternId":"p_000001"`},
+		{"render status", "GET", "/api/renders/r_000004", "", 200, `"patternId":"p_000001"`},
 		{"render unknown", "GET", "/api/renders/r_zzzzzz", "", 404, `"error"`},
 		{"unknown path", "GET", "/api/missing", "", 404, `"error"`},
 		{"outside api", "GET", "/", "", 404, `"error"`},
@@ -156,6 +160,46 @@ func TestCreatedPatternShape(t *testing.T) {
 	if got["createdAt"] != "2026-10-26T21:00:00Z" || got["votes"] != float64(0) || got["swing"] != float64(0) ||
 		got["rating"] != float64(1000) {
 		t.Errorf("pattern = %v", got)
+	}
+	if got["parentId"] != "" || got["remixCount"] != float64(0) {
+		t.Errorf("pattern parentId/remixCount = %v/%v, want \"\"/0", got["parentId"], got["remixCount"])
+	}
+}
+
+// TestCreateIgnoresRemixFields guards that posting back a pattern fetched
+// from the api (which now carries parentId and remixCount) keeps working,
+// and that those server-assigned fields are not accepted from the client.
+func TestCreateIgnoresRemixFields(t *testing.T) {
+	body := strings.Replace(goodBody, `"name"`, `"parentId":"p_old","remixCount":5,"name"`, 1)
+	rec := do(newHandler(), "POST", "/api/patterns", body)
+	if rec.Code != 201 {
+		t.Fatalf("POST /api/patterns = %d, want 201: %s", rec.Code, rec.Body)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["parentId"] != "" {
+		t.Errorf("parentId = %v, want \"\"", got["parentId"])
+	}
+}
+
+// TestListCarriesParentIDAndRemixCountInOrder mirrors the
+// list-shows-remix-fields acceptance check: a remix appears in the list with
+// a literal, contiguous "id":"...","parentId":"...","remixCount":... key
+// order in its raw JSON body.
+func TestListCarriesParentIDAndRemixCountInOrder(t *testing.T) {
+	h := newHandler()
+	do(h, "POST", "/api/patterns", goodBody)
+	do(h, "POST", "/api/patterns/p_000001/remix", `{"name":"remix","author":"other"}`)
+	rec := do(h, "GET", "/api/patterns?limit=100", "")
+	if rec.Code != 200 {
+		t.Fatalf("GET /api/patterns = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	body := rec.Body.String()
+	want := `"id":"p_000002","parentId":"p_000001","remixCount":0`
+	if !strings.Contains(body, want) {
+		t.Errorf("body lacks %q: %s", want, body)
 	}
 }
 

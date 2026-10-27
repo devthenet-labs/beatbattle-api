@@ -51,7 +51,7 @@ func (s *Service) Create(in Input) (Pattern, error) {
 		}.Clone()
 		switch err := s.store.Add(p); err {
 		case nil:
-			return p, nil
+			return s.withRemixCount(p), nil
 		case ErrExists:
 			continue
 		default:
@@ -62,7 +62,78 @@ func (s *Service) Create(in Input) (Pattern, error) {
 }
 
 // Get returns one pattern.
-func (s *Service) Get(id string) (Pattern, error) { return s.store.Get(id) }
+func (s *Service) Get(id string) (Pattern, error) {
+	p, err := s.store.Get(id)
+	if err != nil {
+		return Pattern{}, err
+	}
+	return s.withRemixCount(p), nil
+}
+
+// Remix validates in, checks the original exists, and stores a new pattern
+// that copies the original's tracks, bpm and swing under the new name and
+// author, with ParentID set to the original's id.
+func (s *Service) Remix(id string, in RemixInput) (Pattern, error) {
+	in, err := in.Validate()
+	if err != nil {
+		return Pattern{}, err
+	}
+	original, err := s.store.Get(id)
+	if err != nil {
+		return Pattern{}, err
+	}
+	for range idAttempts {
+		newID, err := s.newID("p_")
+		if err != nil {
+			return Pattern{}, err
+		}
+		p := Pattern{
+			ID: newID, ParentID: original.ID, Name: in.Name, Author: in.Author,
+			BPM: original.BPM, Swing: original.Swing, Tracks: original.Tracks,
+			Rating: 1000, CreatedAt: s.now().UTC().Truncate(time.Second),
+		}.Clone()
+		switch err := s.store.Add(p); err {
+		case nil:
+			return s.withRemixCount(p), nil
+		case ErrExists:
+			continue
+		default:
+			return Pattern{}, err
+		}
+	}
+	return Pattern{}, fmt.Errorf("draw an unused pattern id after %d attempts", idAttempts)
+}
+
+// remixCounts counts patterns by non-empty ParentID, for use by both List
+// and Leaderboard without re-scanning per item.
+func remixCounts(patterns []Pattern) map[string]int {
+	counts := make(map[string]int)
+	for _, p := range patterns {
+		if p.ParentID != "" {
+			counts[p.ParentID]++
+		}
+	}
+	return counts
+}
+
+// countRemixes scans the store once and counts patterns whose ParentID is
+// id.
+func (s *Service) countRemixes(id string) int {
+	n := 0
+	for _, p := range s.store.List() {
+		if p.ParentID == id {
+			n++
+		}
+	}
+	return n
+}
+
+// withRemixCount returns p with RemixCount set from a fresh scan of the
+// store.
+func (s *Service) withRemixCount(p Pattern) Pattern {
+	p.RemixCount = s.countRemixes(p.ID)
+	return p
+}
 
 // Vote adds a vote and returns the new count.
 func (s *Service) Vote(id string) (int, error) { return s.store.Vote(id) }
@@ -71,15 +142,26 @@ func (s *Service) Vote(id string) (int, error) { return s.store.Vote(id) }
 func (s *Service) List(limit int) []Pattern {
 	limit = max(1, min(limit, MaxLimit))
 	all := s.store.List()
+	counts := remixCounts(all)
 	out := make([]Pattern, 0, min(limit, len(all)))
 	for i := len(all) - 1; i >= 0 && len(out) < limit; i-- {
-		out = append(out, all[i])
+		p := all[i]
+		p.RemixCount = counts[p.ID]
+		out = append(out, p)
 	}
 	return out
 }
 
 // Leaderboard returns the top patterns by votes.
-func (s *Service) Leaderboard() []Pattern { return Rank(s.store.List(), LeaderboardTop) }
+func (s *Service) Leaderboard() []Pattern {
+	all := s.store.List()
+	counts := remixCounts(all)
+	ranked := Rank(all, LeaderboardTop)
+	for i := range ranked {
+		ranked[i].RemixCount = counts[ranked[i].ID]
+	}
+	return ranked
+}
 
 // Rank orders patterns (given in insertion order) by votes, most first. Ties
 // go to the earlier createdAt, then to the earlier insertion. It returns at
@@ -129,7 +211,7 @@ func (s *Service) Ratings() []RatingEntry {
 // fetched patterns.
 func (s *Service) view(b Battle, a, bside Pattern) BattleView {
 	return BattleView{
-		ID: b.ID, PatternA: a, PatternB: bside,
+		ID: b.ID, PatternA: s.withRemixCount(a), PatternB: s.withRemixCount(bside),
 		VotesA: b.VotesA, VotesB: b.VotesB, CreatedAt: b.CreatedAt,
 	}
 }
