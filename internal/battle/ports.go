@@ -9,6 +9,7 @@ import (
 const (
 	MaxPatterns    = 1000
 	MaxRenders     = 10000
+	MaxBattles     = 1000
 	DefaultLimit   = 20
 	MaxLimit       = 100
 	LeaderboardTop = 10
@@ -33,6 +34,31 @@ type Store interface {
 	Vote(id string) (int, error)
 	// List returns every pattern in insertion order (oldest first).
 	List() []Pattern
+}
+
+// Battle is a stored head-to-head matchup between two patterns, in the
+// shared JSON shape.
+type Battle struct {
+	ID         string    `json:"id"`
+	PatternAID string    `json:"patternAId"`
+	PatternBID string    `json:"patternBId"`
+	VotesA     int       `json:"votesA"`
+	VotesB     int       `json:"votesB"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
+// BattleStore keeps battles. Implementations must be safe for concurrent use
+// and must not share slices or maps with the battles they accept or return.
+type BattleStore interface {
+	// Add stores b; ErrExists for a taken id, ErrStoreFull at MaxBattles.
+	Add(b Battle) error
+	// Get returns the battle, or ErrNotFound.
+	Get(id string) (Battle, error)
+	// Vote increments VotesA or VotesB (side is exactly "a" or "b") and
+	// returns the updated battle, or ErrNotFound for an unknown id.
+	Vote(id, side string) (Battle, error)
+	// List returns every battle in insertion order (oldest first).
+	List() []Battle
 }
 
 // RenderStatus is where a render request is in its life.

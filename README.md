@@ -20,11 +20,21 @@ Errors are JSON `{"error": "<message>"}`. Request bodies are limited to 16 KiB (
 | `GET /api/leaderboard`               | bare JSON array: top 10 by votes, ties to the earlier `createdAt`                        |
 | `POST /api/patterns/{id}/renders`    | 202 `{"renderId":"r_…","patternId":"…","status":"pending"}`, or 404                      |
 | `GET /api/renders/{id}`              | that status (always `pending` in v0), or 404                                             |
+| `POST /api/battles`                  | 201 with the new battle (`id` is `b_` + 6 hex); 400 if either pattern id is missing or the two ids are equal; 404 if either pattern id does not exist; past 1000 battles 507 `store full` |
+| `GET /api/battles?limit=N`           | bare JSON array, newest first; default 20, maximum 100 (larger is clamped; non-numeric or < 1 is 400) |
+| `GET /api/battles/{id}`              | the battle, or 404                                                                       |
+| `POST /api/battles/{id}/votes`       | 200 with the updated battle; 400 for a missing/invalid `side`; 404 for an unknown battle id |
 
 A pattern is `{id, name, author, bpm, swing, tracks:{kick,snare,hat}, votes, createdAt}`; each track is exactly 16
 booleans. `name` is 1-40 characters after trimming with no control characters, `author` 1-24 of `[A-Za-z0-9_-]`, `bpm` an
 integer 60-200, `swing` an integer 0-60. Unknown fields and tracks are rejected; `id`, `votes` and `createdAt` are
 ignored on input.
+
+A battle is `{id, patternA, patternB, votesA, votesB, createdAt}`, where `patternA`/`patternB` are the full pattern
+shape above, joined live from the pattern store on every read; the battle id is `b_` followed by 6 lowercase hex
+characters, drawn the same way as pattern (`p_`) and render (`r_`) ids. `POST /api/battles/{id}/votes` takes
+`{"side": "a"}` or `{"side": "b"}`; voting on a battle side also adds one vote to that pattern's normal vote count,
+so it also rises on `GET /api/leaderboard`.
 
 ## Layout
 

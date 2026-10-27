@@ -10,16 +10,17 @@ import (
 
 // Service is the use-case layer over the ports.
 type Service struct {
-	store  Store
-	queue  RenderQueue
-	now    func() time.Time
-	random io.Reader
+	store   Store
+	battles BattleStore
+	queue   RenderQueue
+	now     func() time.Time
+	random  io.Reader
 }
 
 // NewService wires the core. now and random are injected; production passes
 // time.Now and crypto/rand.Reader.
-func NewService(store Store, queue RenderQueue, now func() time.Time, random io.Reader) *Service {
-	return &Service{store: store, queue: queue, now: now, random: random}
+func NewService(store Store, battles BattleStore, queue RenderQueue, now func() time.Time, random io.Reader) *Service {
+	return &Service{store: store, battles: battles, queue: queue, now: now, random: random}
 }
 
 const idAttempts = 5
@@ -95,6 +96,118 @@ func Rank(patterns []Pattern, n int) []Pattern {
 		ranked = ranked[:n]
 	}
 	return ranked
+}
+
+// view builds the served BattleView from a battle and its two already
+// fetched patterns.
+func (s *Service) view(b Battle, a, bside Pattern) BattleView {
+	return BattleView{
+		ID: b.ID, PatternA: a, PatternB: bside,
+		VotesA: b.VotesA, VotesB: b.VotesB, CreatedAt: b.CreatedAt,
+	}
+}
+
+// CreateBattle validates in, checks both patterns exist, and stores a new
+// battle between them.
+func (s *Service) CreateBattle(in BattleInput) (BattleView, error) {
+	in, err := in.Validate()
+	if err != nil {
+		return BattleView{}, err
+	}
+	a, err := s.store.Get(in.PatternAID)
+	if err != nil {
+		return BattleView{}, err
+	}
+	bside, err := s.store.Get(in.PatternBID)
+	if err != nil {
+		return BattleView{}, err
+	}
+	for range idAttempts {
+		id, err := s.newID("b_")
+		if err != nil {
+			return BattleView{}, err
+		}
+		b := Battle{
+			ID: id, PatternAID: in.PatternAID, PatternBID: in.PatternBID,
+			CreatedAt: s.now().UTC().Truncate(time.Second),
+		}
+		switch err := s.battles.Add(b); err {
+		case nil:
+			return s.view(b, a, bside), nil
+		case ErrExists:
+			continue
+		default:
+			return BattleView{}, err
+		}
+	}
+	return BattleView{}, fmt.Errorf("draw an unused battle id after %d attempts", idAttempts)
+}
+
+// GetBattle returns one battle, joined with its two patterns.
+func (s *Service) GetBattle(id string) (BattleView, error) {
+	b, err := s.battles.Get(id)
+	if err != nil {
+		return BattleView{}, err
+	}
+	a, err := s.store.Get(b.PatternAID)
+	if err != nil {
+		return BattleView{}, err
+	}
+	bside, err := s.store.Get(b.PatternBID)
+	if err != nil {
+		return BattleView{}, err
+	}
+	return s.view(b, a, bside), nil
+}
+
+// ListBattles returns the newest battles first. limit is clamped to
+// 1..MaxLimit.
+func (s *Service) ListBattles(limit int) []BattleView {
+	limit = max(1, min(limit, MaxLimit))
+	all := s.battles.List()
+	out := make([]BattleView, 0, min(limit, len(all)))
+	for i := len(all) - 1; i >= 0 && len(out) < limit; i-- {
+		b := all[i]
+		a, err := s.store.Get(b.PatternAID)
+		if err != nil {
+			continue
+		}
+		bside, err := s.store.Get(b.PatternBID)
+		if err != nil {
+			continue
+		}
+		out = append(out, s.view(b, a, bside))
+	}
+	return out
+}
+
+// VoteBattle adds a vote to one side of a battle. The voted pattern also
+// gets a vote through Store.Vote, so it also rises on the main leaderboard.
+func (s *Service) VoteBattle(id, side string) (BattleView, error) {
+	b, err := s.battles.Get(id)
+	if err != nil {
+		return BattleView{}, err
+	}
+	patternID := b.PatternAID
+	if side == "b" {
+		patternID = b.PatternBID
+	}
+	if _, err := s.store.Vote(patternID); err != nil {
+		return BattleView{}, err
+	}
+	b, err = s.battles.Vote(id, side)
+	if err != nil {
+		return BattleView{}, err
+	}
+	a, err := s.store.Get(b.PatternAID)
+	if err != nil {
+		return BattleView{}, err
+	}
+	bside, err := s.store.Get(b.PatternBID)
+	if err != nil {
+		return BattleView{}, err
+	}
+	return s.view(b, a, bside), nil
 }
 
 // RequestRender queues a render of an existing pattern.

@@ -26,6 +26,50 @@ func TestStoreLimitsAndDuplicates(t *testing.T) {
 	}
 }
 
+func TestBattlesLimitsAndDuplicates(t *testing.T) {
+	s := NewBattles()
+	for i := 0; i < battle.MaxBattles; i++ {
+		if err := s.Add(battle.Battle{ID: fmt.Sprint(i)}); err != nil {
+			t.Fatalf("add %d: %v", i, err)
+		}
+	}
+	if err := s.Add(battle.Battle{ID: "0"}); !errors.Is(err, battle.ErrExists) {
+		t.Errorf("duplicate err = %v", err)
+	}
+	if err := s.Add(battle.Battle{ID: "extra"}); !errors.Is(err, battle.ErrStoreFull) {
+		t.Errorf("full err = %v", err)
+	}
+	if l := s.List(); l[0].ID != "0" || l[len(l)-1].ID != fmt.Sprint(battle.MaxBattles-1) {
+		t.Error("List is not in insertion order")
+	}
+}
+
+func TestBattlesGetAndVote(t *testing.T) {
+	s := NewBattles()
+	if err := s.Add(battle.Battle{ID: "b_1"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get("b_1")
+	if err != nil || got.VotesA != 0 || got.VotesB != 0 {
+		t.Fatalf("Get = %+v, %v", got, err)
+	}
+	if _, err := s.Get("b_nope"); !errors.Is(err, battle.ErrNotFound) {
+		t.Errorf("get unknown err = %v", err)
+	}
+
+	v, err := s.Vote("b_1", "a")
+	if err != nil || v.VotesA != 1 || v.VotesB != 0 {
+		t.Fatalf("Vote a = %+v, %v", v, err)
+	}
+	v, err = s.Vote("b_1", "b")
+	if err != nil || v.VotesA != 1 || v.VotesB != 1 {
+		t.Fatalf("Vote b = %+v, %v", v, err)
+	}
+	if _, err := s.Vote("b_nope", "a"); !errors.Is(err, battle.ErrNotFound) {
+		t.Errorf("vote unknown err = %v", err)
+	}
+}
+
 func TestQueueLimitsAndDuplicates(t *testing.T) {
 	q := NewQueue()
 	for i := 0; i < battle.MaxRenders; i++ {
