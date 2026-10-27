@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/devthenet-labs/beatbattle-api/internal/battle"
 )
@@ -18,8 +19,8 @@ import (
 const maxBody = 16 << 10
 
 // New returns the /api handler.
-func New(svc *battle.Service, revision string) http.Handler {
-	a := &api{svc: svc, revision: revision}
+func New(svc *battle.Service, revision string, now func() time.Time) http.Handler {
+	a := &api{svc: svc, revision: revision, limiter: newVoteLimiter(now)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", a.healthz)
 	mux.HandleFunc("POST /api/patterns", a.createPattern)
@@ -44,6 +45,21 @@ func New(svc *battle.Service, revision string) http.Handler {
 type api struct {
 	svc      *battle.Service
 	revision string
+	limiter  *voteLimiter
+}
+
+// rateLimitVote answers 429 and reports false when r's client (the
+// X-Client-Id header, or "" when absent) has already voted voteLimit
+// times in the last voteWindow. A refused request is not recorded by
+// the limiter, so it never changes the vote count underneath it.
+func (a *api) rateLimitVote(w http.ResponseWriter, r *http.Request) bool {
+	ok, seconds := a.limiter.allow(r.Header.Get("X-Client-Id"))
+	if ok {
+		return true
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(seconds))
+	writeError(w, http.StatusTooManyRequests, "too many votes")
+	return false
 }
 
 func (a *api) healthz(w http.ResponseWriter, _ *http.Request) {
@@ -110,6 +126,9 @@ func (a *api) remixPattern(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) vote(w http.ResponseWriter, r *http.Request) {
+	if !a.rateLimitVote(w, r) {
+		return
+	}
 	if _, ok := readBody(w, r); !ok {
 		return
 	}
@@ -170,6 +189,9 @@ func (a *api) getBattle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) voteBattle(w http.ResponseWriter, r *http.Request) {
+	if !a.rateLimitVote(w, r) {
+		return
+	}
 	body, ok := readBody(w, r)
 	if !ok {
 		return
