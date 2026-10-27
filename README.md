@@ -16,7 +16,7 @@ Errors are JSON `{"error": "<message>"}`. Request bodies are limited to 16 KiB (
 | `POST /api/patterns`                 | 201 with the stored pattern (`id` is `p_` + 6 hex); invalid input 400; past 1000 patterns 507 `store full` |
 | `GET /api/patterns?limit=N`          | bare JSON array, newest first; default 20, maximum 100 (larger is clamped; non-numeric or < 1 is 400) |
 | `GET /api/patterns/{id}`             | the pattern, or 404                                                                      |
-| `POST /api/patterns/{id}/votes`      | 200 `{"votes": N}`, or 404                                                               |
+| `POST /api/patterns/{id}/votes`      | 200 `{"votes": N}`, or 404; past 3 votes per client per 10 seconds, 429 `too many votes` with `Retry-After` |
 | `POST /api/patterns/{id}/remix`      | 201 with the new pattern; 400 for an invalid `name`/`author`; 404 for an unknown id      |
 | `GET /api/leaderboard`               | bare JSON array: top 10 by votes, ties to the earlier `createdAt`                        |
 | `GET /api/ratings`                   | bare JSON array: top 20 patterns by rating, highest first, each {id, name, author, rating} |
@@ -25,7 +25,7 @@ Errors are JSON `{"error": "<message>"}`. Request bodies are limited to 16 KiB (
 | `POST /api/battles`                  | 201 with the new battle (`id` is `b_` + 6 hex); 400 if either pattern id is missing or the two ids are equal; 404 if either pattern id does not exist; past 1000 battles 507 `store full` |
 | `GET /api/battles?limit=N`           | bare JSON array, newest first; default 20, maximum 100 (larger is clamped; non-numeric or < 1 is 400) |
 | `GET /api/battles/{id}`              | the battle, or 404                                                                       |
-| `POST /api/battles/{id}/votes`       | 200 with the updated battle; 400 for a missing/invalid `side`; 404 for an unknown battle id |
+| `POST /api/battles/{id}/votes`       | 200 with the updated battle; 400 for a missing/invalid `side`; 404 for an unknown battle id; past 3 votes per client per 10 seconds, 429 `too many votes` with `Retry-After` |
 
 A pattern is `{id, parentId, remixCount, name, author, bpm, swing, tracks:{kick,snare,hat}, votes, rating,
 createdAt}`; each track is exactly 16 booleans. `name` is 1-40 characters after trimming with no control characters,
@@ -43,6 +43,10 @@ characters, drawn the same way as pattern (`p_`) and render (`r_`) ids. `POST /a
 so it also rises on `GET /api/leaderboard`, and updates both patterns' Elo rating (K=32, from the ratings as they
 stood before this vote, rounded to the nearest whole number; the voted-for pattern is the winner). The full battle
 view returned by that endpoint already carries both patterns' updated rating and votes inside `patternA`/`patternB`.
+
+Both vote endpoints share one rate limit of 3 votes per client per 10 seconds, counted together; the client is the
+`X-Client-Id` request header, and requests without it share one bucket; a vote past the limit answers 429 with a
+`Retry-After` header (whole seconds until a vote is allowed again) and does not count.
 
 ## Layout
 

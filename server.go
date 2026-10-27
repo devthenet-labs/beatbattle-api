@@ -18,7 +18,7 @@ func newHandler(revision string) http.Handler {
 
 // newHandlerWith serves /api over svc, behind the security headers.
 func newHandlerWith(svc *battle.Service, revision string) http.Handler {
-	return withSecurityHeaders(httpapi.New(svc, revision))
+	return withSecurityHeaders(httpapi.New(svc, revision, time.Now))
 }
 
 // withSecurityHeaders sets the headers every response carries.

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -25,7 +26,26 @@ func (c *counterRand) Read(p []byte) (int, error) {
 func newHandler() http.Handler {
 	now := func() time.Time { return time.Date(2026, 10, 26, 21, 0, 0, 0, time.UTC) }
 	svc := battle.NewService(memstore.NewStore(), memstore.NewBattles(), memstore.NewQueue(), now, &counterRand{})
-	return httpapi.New(svc, "abc123")
+	return httpapi.New(svc, "abc123", now)
+}
+
+// newHandlerWithClock behaves like newHandler but its vote limiter
+// reads *clock, so a test can advance it to simulate the window
+// passing.
+func newHandlerWithClock(clock *time.Time) http.Handler {
+	now := func() time.Time { return *clock }
+	svc := battle.NewService(memstore.NewStore(), memstore.NewBattles(), memstore.NewQueue(), now, &counterRand{})
+	return httpapi.New(svc, "abc123", now)
+}
+
+func doWithClient(h http.Handler, method, path, body, clientID string) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	if clientID != "" {
+		req.Header.Set("X-Client-Id", clientID)
+	}
+	h.ServeHTTP(rec, req)
+	return rec
 }
 
 const goodBody = `{"name":"Four","author":"brvtl","bpm":120,"swing":0,"tracks":{
@@ -108,34 +128,38 @@ func TestBattleRoutes(t *testing.T) {
 		status                   int
 		contains                 string
 		extra                    []string
+		client                   string
 	}{
-		{"create pattern a", "POST", "/api/patterns", goodBody, 201, `"id":"p_000001"`, nil},
-		{"create pattern b", "POST", "/api/patterns", goodBody, 201, `"id":"p_000002"`, nil},
-		{"create battle missing patternAId", "POST", "/api/battles", `{"patternBId":"p_000002"}`, 400, `"error"`, nil},
+		{"create pattern a", "POST", "/api/patterns", goodBody, 201, `"id":"p_000001"`, nil, ""},
+		{"create pattern b", "POST", "/api/patterns", goodBody, 201, `"id":"p_000002"`, nil, ""},
+		{"create battle missing patternAId", "POST", "/api/battles", `{"patternBId":"p_000002"}`, 400, `"error"`, nil, ""},
 		{"create battle same id", "POST", "/api/battles",
-			`{"patternAId":"p_000001","patternBId":"p_000001"}`, 400, `"error"`, nil},
+			`{"patternAId":"p_000001","patternBId":"p_000001"}`, 400, `"error"`, nil, ""},
 		{"create battle unknown pattern id", "POST", "/api/battles",
-			`{"patternAId":"p_zzzzzz","patternBId":"p_000002"}`, 404, `"error"`, nil},
+			`{"patternAId":"p_zzzzzz","patternBId":"p_000002"}`, 404, `"error"`, nil, ""},
 		{"create battle success", "POST", "/api/battles",
 			`{"patternAId":"p_000001","patternBId":"p_000002"}`, 201,
-			`"id":"b_000003","patternA":{"id":"p_000001"`, nil},
-		{"list battles", "GET", "/api/battles", "", 200, `"id":"b_000003"`, nil},
-		{"list battles limit", "GET", "/api/battles?limit=1", "", 200, `"id":"b_000003"`, nil},
-		{"get battle", "GET", "/api/battles/b_000003", "", 200, `"patternB":{"id":"p_000002"`, nil},
-		{"get battle unknown", "GET", "/api/battles/b_zzzzzz", "", 404, `"error"`, nil},
+			`"id":"b_000003","patternA":{"id":"p_000001"`, nil, ""},
+		{"list battles", "GET", "/api/battles", "", 200, `"id":"b_000003"`, nil, ""},
+		{"list battles limit", "GET", "/api/battles?limit=1", "", 200, `"id":"b_000003"`, nil, ""},
+		{"get battle", "GET", "/api/battles/b_000003", "", 200, `"patternB":{"id":"p_000002"`, nil, ""},
+		{"get battle unknown", "GET", "/api/battles/b_zzzzzz", "", 404, `"error"`, nil, ""},
 		{"vote battle side a", "POST", "/api/battles/b_000003/votes", `{"side":"a"}`, 200, `"votesA":1,"votesB":0`,
-			[]string{`"votes":1,"rating":1016`, `"votes":0,"rating":984`}},
+			[]string{`"votes":1,"rating":1016`, `"votes":0,"rating":984`}, ""},
 		{"vote battle side b", "POST", "/api/battles/b_000003/votes", `{"side":"b"}`, 200, `"votesA":1,"votesB":1`,
-			[]string{`"votes":1,"rating":999`, `"votes":1,"rating":1001`}},
-		{"vote battle bad side", "POST", "/api/battles/b_000003/votes", `{"side":"x"}`, 400, `"error"`, nil},
-		{"vote battle missing side", "POST", "/api/battles/b_000003/votes", `{}`, 400, `"error"`, nil},
-		{"vote battle unknown field", "POST", "/api/battles/b_000003/votes", `{"side":"a","extra":1}`, 400, `"error"`, nil},
-		{"vote battle unknown battle", "POST", "/api/battles/b_zzzzzz/votes", `{"side":"a"}`, 404, `"error"`, nil},
-		{"leaderboard shows battle votes", "GET", "/api/leaderboard", "", 200, `"votes":1`, nil},
+			[]string{`"votes":1,"rating":999`, `"votes":1,"rating":1001`}, ""},
+		{"vote battle bad side", "POST", "/api/battles/b_000003/votes", `{"side":"x"}`, 400, `"error"`, nil, ""},
+		// These three deliberately use distinct X-Client-Id values: the
+		// three header-less votes above already fill the shared empty-key
+		// bucket, and these cases test request validation, not the limiter.
+		{"vote battle missing side", "POST", "/api/battles/b_000003/votes", `{}`, 400, `"error"`, nil, "tbr-missing-side"},
+		{"vote battle unknown field", "POST", "/api/battles/b_000003/votes", `{"side":"a","extra":1}`, 400, `"error"`, nil, "tbr-unknown-field"},
+		{"vote battle unknown battle", "POST", "/api/battles/b_zzzzzz/votes", `{"side":"a"}`, 404, `"error"`, nil, "tbr-unknown-battle"},
+		{"leaderboard shows battle votes", "GET", "/api/leaderboard", "", 200, `"votes":1`, nil, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rec := do(h, tc.method, tc.path, tc.body)
+			rec := doWithClient(h, tc.method, tc.path, tc.body, tc.client)
 			if rec.Code != tc.status {
 				t.Fatalf("%s %s = %d, want %d: %s", tc.method, tc.path, rec.Code, tc.status, rec.Body)
 			}
@@ -229,5 +253,77 @@ func TestPlainVoteDoesNotAffectRating(t *testing.T) {
 	rec := do(h, "GET", "/api/patterns/p_000001", "")
 	if !strings.Contains(rec.Body.String(), `"rating":1000`) {
 		t.Errorf("plain vote changed rating: %s", rec.Body)
+	}
+}
+
+// TestVoteRateLimit guards the shared 3-per-10s vote limiter: it is shared
+// across both vote routes and per X-Client-Id, a refused vote does not count,
+// and the window reopens once it passes.
+func TestVoteRateLimit(t *testing.T) {
+	clock := time.Date(2026, 10, 26, 21, 0, 0, 0, time.UTC)
+	h := newHandlerWithClock(&clock)
+
+	do(h, "POST", "/api/patterns", goodBody)
+	do(h, "POST", "/api/patterns", goodBody)
+	do(h, "POST", "/api/battles", `{"patternAId":"p_000001","patternBId":"p_000002"}`)
+
+	for i, want := range []int{1, 2, 3} {
+		rec := doWithClient(h, "POST", "/api/patterns/p_000001/votes", "", "alice")
+		if rec.Code != 200 {
+			t.Fatalf("vote %d = %d, want 200: %s", i+1, rec.Code, rec.Body)
+		}
+		wantBody := `{"votes":` + strconv.Itoa(want) + `}`
+		if !strings.Contains(rec.Body.String(), wantBody) {
+			t.Errorf("vote %d body = %s, want %s", i+1, rec.Body, wantBody)
+		}
+	}
+
+	rec := doWithClient(h, "POST", "/api/patterns/p_000001/votes", "", "alice")
+	if rec.Code != 429 {
+		t.Fatalf("4th vote = %d, want 429: %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), `{"error":"too many votes"}`) {
+		t.Errorf("4th vote body = %s", rec.Body)
+	}
+	retryAfter, err := strconv.Atoi(rec.Header().Get("Retry-After"))
+	if err != nil {
+		t.Fatalf("Retry-After = %q, not an integer: %v", rec.Header().Get("Retry-After"), err)
+	}
+	if retryAfter != 10 {
+		t.Errorf("Retry-After = %d, want 10", retryAfter)
+	}
+
+	rec = do(h, "GET", "/api/patterns/p_000001", "")
+	if !strings.Contains(rec.Body.String(), `"votes":3`) {
+		t.Errorf("refused vote changed the count: %s", rec.Body)
+	}
+
+	rec = doWithClient(h, "POST", "/api/patterns/p_000002/votes", "", "bob")
+	if rec.Code != 200 {
+		t.Errorf("bob's vote = %d, want 200: %s", rec.Code, rec.Body)
+	}
+
+	rec = doWithClient(h, "POST", "/api/battles/b_000003/votes", `{"side":"a"}`, "alice")
+	if rec.Code != 429 {
+		t.Errorf("alice's battle vote = %d, want 429 (shared bucket): %s", rec.Code, rec.Body)
+	}
+
+	rec = do(h, "GET", "/api/battles/b_000003", "")
+	if !strings.Contains(rec.Body.String(), `"votesA":0`) {
+		t.Errorf("refused battle vote changed the count: %s", rec.Body)
+	}
+
+	rec = do(h, "POST", "/api/patterns/p_000002/votes", "")
+	if rec.Code != 200 {
+		t.Errorf("headerless vote = %d, want 200: %s", rec.Code, rec.Body)
+	}
+
+	clock = clock.Add(10 * time.Second)
+	rec = doWithClient(h, "POST", "/api/patterns/p_000001/votes", "", "alice")
+	if rec.Code != 200 {
+		t.Fatalf("vote after window = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), `"votes":4`) {
+		t.Errorf("vote after window body = %s, want \"votes\":4", rec.Body)
 	}
 }
