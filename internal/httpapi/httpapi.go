@@ -26,6 +26,7 @@ func New(svc *battle.Service, revision string) http.Handler {
 	mux.HandleFunc("GET /api/patterns", a.listPatterns)
 	mux.HandleFunc("GET /api/patterns/{id}", a.getPattern)
 	mux.HandleFunc("POST /api/patterns/{id}/votes", a.vote)
+	mux.HandleFunc("POST /api/patterns/{id}/remix", a.remixPattern)
 	mux.HandleFunc("GET /api/leaderboard", a.leaderboard)
 	mux.HandleFunc("GET /api/ratings", a.ratings)
 	mux.HandleFunc("POST /api/battles", a.createBattle)
@@ -88,6 +89,24 @@ func (a *api) getPattern(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, p)
+}
+
+func (a *api) remixPattern(w http.ResponseWriter, r *http.Request) {
+	body, ok := readBody(w, r)
+	if !ok {
+		return
+	}
+	in, err := battle.ParseRemixInput(bytes.NewReader(body))
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	p, err := a.svc.Remix(r.PathValue("id"), in)
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, p)
 }
 
 func (a *api) vote(w http.ResponseWriter, r *http.Request) {

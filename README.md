@@ -17,6 +17,7 @@ Errors are JSON `{"error": "<message>"}`. Request bodies are limited to 16 KiB (
 | `GET /api/patterns?limit=N`          | bare JSON array, newest first; default 20, maximum 100 (larger is clamped; non-numeric or < 1 is 400) |
 | `GET /api/patterns/{id}`             | the pattern, or 404                                                                      |
 | `POST /api/patterns/{id}/votes`      | 200 `{"votes": N}`, or 404                                                               |
+| `POST /api/patterns/{id}/remix`      | 201 with the new pattern; 400 for an invalid `name`/`author`; 404 for an unknown id      |
 | `GET /api/leaderboard`               | bare JSON array: top 10 by votes, ties to the earlier `createdAt`                        |
 | `GET /api/ratings`                   | bare JSON array: top 20 patterns by rating, highest first, each {id, name, author, rating} |
 | `POST /api/patterns/{id}/renders`    | 202 `{"renderId":"r_…","patternId":"…","status":"pending"}`, or 404                      |
@@ -26,10 +27,14 @@ Errors are JSON `{"error": "<message>"}`. Request bodies are limited to 16 KiB (
 | `GET /api/battles/{id}`              | the battle, or 404                                                                       |
 | `POST /api/battles/{id}/votes`       | 200 with the updated battle; 400 for a missing/invalid `side`; 404 for an unknown battle id |
 
-A pattern is `{id, name, author, bpm, swing, tracks:{kick,snare,hat}, votes, rating, createdAt}`; each track is exactly
-16 booleans. `name` is 1-40 characters after trimming with no control characters, `author` 1-24 of `[A-Za-z0-9_-]`,
-`bpm` an integer 60-200, `swing` an integer 0-60. `rating` starts at 1000 and moves only through battle votes (Elo,
-K=32). Unknown fields and tracks are rejected; `id`, `votes`, `rating` and `createdAt` are ignored on input.
+A pattern is `{id, parentId, remixCount, name, author, bpm, swing, tracks:{kick,snare,hat}, votes, rating,
+createdAt}`; each track is exactly 16 booleans. `name` is 1-40 characters after trimming with no control characters,
+`author` 1-24 of `[A-Za-z0-9_-]`, `bpm` an integer 60-200, `swing` an integer 0-60. `rating` starts at 1000 and moves
+only through battle votes (Elo, K=32). `parentId` is empty for an original pattern, or the id of the pattern it was
+remixed from; `remixCount` is how many stored patterns have that pattern as their `parentId`. Unknown fields and
+tracks are rejected; `id`, `parentId`, `remixCount`, `votes`, `rating` and `createdAt` are ignored on input to
+`POST /api/patterns`. `POST /api/patterns/{id}/remix`'s body is `{"name": "...", "author": "..."}` only: `tracks`,
+`bpm` and `swing` are always copied from the original.
 
 A battle is `{id, patternA, patternB, votesA, votesB, createdAt}`, where `patternA`/`patternB` are the full pattern
 shape above, joined live from the pattern store on every read; the battle id is `b_` followed by 6 lowercase hex
