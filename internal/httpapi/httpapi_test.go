@@ -174,3 +174,16 @@ func TestRatingsRoute(t *testing.T) {
 		t.Errorf("body should not carry the full pattern shape: %s", body)
 	}
 }
+
+// TestPlainVoteDoesNotAffectRating guards the plan's rule that rating moves
+// only through battle votes: a plain POST /api/patterns/{id}/votes must
+// leave the pattern's rating untouched.
+func TestPlainVoteDoesNotAffectRating(t *testing.T) {
+	h := newHandler()
+	do(h, "POST", "/api/patterns", goodBody)
+	do(h, "POST", "/api/patterns/p_000001/votes", "")
+	rec := do(h, "GET", "/api/patterns/p_000001", "")
+	if !strings.Contains(rec.Body.String(), `"rating":1000`) {
+		t.Errorf("plain vote changed rating: %s", rec.Body)
+	}
+}
