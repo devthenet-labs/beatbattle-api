@@ -29,7 +29,16 @@ type Pattern struct {
 	Swing     int               `json:"swing"`
 	Tracks    map[string][]bool `json:"tracks"`
 	Votes     int               `json:"votes"`
+	Rating    int               `json:"rating"`
 	CreatedAt time.Time         `json:"createdAt"`
+}
+
+// RatingEntry is the reduced shape served by GET /api/ratings.
+type RatingEntry struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Author string `json:"author"`
+	Rating int    `json:"rating"`
 }
 
 // Clone returns a copy that shares no slices or maps with p.
@@ -52,6 +61,7 @@ type Input struct {
 	Tracks    map[string][]bool `json:"tracks"`
 	ID        json.RawMessage   `json:"id"`
 	Votes     json.RawMessage   `json:"votes"`
+	Rating    json.RawMessage   `json:"rating"`
 	CreatedAt json.RawMessage   `json:"createdAt"`
 }
 

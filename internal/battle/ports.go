@@ -13,6 +13,7 @@ const (
 	DefaultLimit   = 20
 	MaxLimit       = 100
 	LeaderboardTop = 10
+	RatingsTop     = 20
 )
 
 // Errors the ports and the service report.
@@ -32,6 +33,8 @@ type Store interface {
 	Get(id string) (Pattern, error)
 	// Vote adds one vote and returns the new count, or ErrNotFound.
 	Vote(id string) (int, error)
+	// SetRating sets the pattern's rating, or ErrNotFound.
+	SetRating(id string, rating int) error
 	// List returns every pattern in insertion order (oldest first).
 	List() []Pattern
 }

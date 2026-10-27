@@ -26,6 +26,23 @@ func TestStoreLimitsAndDuplicates(t *testing.T) {
 	}
 }
 
+func TestStoreSetRating(t *testing.T) {
+	s := NewStore()
+	if err := s.Add(battle.Pattern{ID: "p_1", Rating: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetRating("p_1", 1016); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get("p_1")
+	if err != nil || got.Rating != 1016 {
+		t.Fatalf("Get after SetRating = %+v, %v", got, err)
+	}
+	if err := s.SetRating("p_nope", 1000); !errors.Is(err, battle.ErrNotFound) {
+		t.Errorf("SetRating unknown err = %v", err)
+	}
+}
+
 func TestBattlesLimitsAndDuplicates(t *testing.T) {
 	s := NewBattles()
 	for i := 0; i < battle.MaxBattles; i++ {

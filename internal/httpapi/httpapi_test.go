@@ -90,7 +90,7 @@ func TestRoutes(t *testing.T) {
 
 func TestEmptyListsAreArrays(t *testing.T) {
 	h := newHandler()
-	for _, path := range []string{"/api/patterns", "/api/leaderboard", "/api/battles"} {
+	for _, path := range []string{"/api/patterns", "/api/leaderboard", "/api/battles", "/api/ratings"} {
 		if got := strings.TrimSpace(do(h, "GET", path, "").Body.String()); got != "[]" {
 			t.Errorf("%s = %s, want []", path, got)
 		}
@@ -103,28 +103,31 @@ func TestBattleRoutes(t *testing.T) {
 		name, method, path, body string
 		status                   int
 		contains                 string
+		extra                    []string
 	}{
-		{"create pattern a", "POST", "/api/patterns", goodBody, 201, `"id":"p_000001"`},
-		{"create pattern b", "POST", "/api/patterns", goodBody, 201, `"id":"p_000002"`},
-		{"create battle missing patternAId", "POST", "/api/battles", `{"patternBId":"p_000002"}`, 400, `"error"`},
+		{"create pattern a", "POST", "/api/patterns", goodBody, 201, `"id":"p_000001"`, nil},
+		{"create pattern b", "POST", "/api/patterns", goodBody, 201, `"id":"p_000002"`, nil},
+		{"create battle missing patternAId", "POST", "/api/battles", `{"patternBId":"p_000002"}`, 400, `"error"`, nil},
 		{"create battle same id", "POST", "/api/battles",
-			`{"patternAId":"p_000001","patternBId":"p_000001"}`, 400, `"error"`},
+			`{"patternAId":"p_000001","patternBId":"p_000001"}`, 400, `"error"`, nil},
 		{"create battle unknown pattern id", "POST", "/api/battles",
-			`{"patternAId":"p_zzzzzz","patternBId":"p_000002"}`, 404, `"error"`},
+			`{"patternAId":"p_zzzzzz","patternBId":"p_000002"}`, 404, `"error"`, nil},
 		{"create battle success", "POST", "/api/battles",
 			`{"patternAId":"p_000001","patternBId":"p_000002"}`, 201,
-			`"id":"b_000003","patternA":{"id":"p_000001"`},
-		{"list battles", "GET", "/api/battles", "", 200, `"id":"b_000003"`},
-		{"list battles limit", "GET", "/api/battles?limit=1", "", 200, `"id":"b_000003"`},
-		{"get battle", "GET", "/api/battles/b_000003", "", 200, `"patternB":{"id":"p_000002"`},
-		{"get battle unknown", "GET", "/api/battles/b_zzzzzz", "", 404, `"error"`},
-		{"vote battle side a", "POST", "/api/battles/b_000003/votes", `{"side":"a"}`, 200, `"votesA":1,"votesB":0`},
-		{"vote battle side b", "POST", "/api/battles/b_000003/votes", `{"side":"b"}`, 200, `"votesA":1,"votesB":1`},
-		{"vote battle bad side", "POST", "/api/battles/b_000003/votes", `{"side":"x"}`, 400, `"error"`},
-		{"vote battle missing side", "POST", "/api/battles/b_000003/votes", `{}`, 400, `"error"`},
-		{"vote battle unknown field", "POST", "/api/battles/b_000003/votes", `{"side":"a","extra":1}`, 400, `"error"`},
-		{"vote battle unknown battle", "POST", "/api/battles/b_zzzzzz/votes", `{"side":"a"}`, 404, `"error"`},
-		{"leaderboard shows battle votes", "GET", "/api/leaderboard", "", 200, `"votes":1`},
+			`"id":"b_000003","patternA":{"id":"p_000001"`, nil},
+		{"list battles", "GET", "/api/battles", "", 200, `"id":"b_000003"`, nil},
+		{"list battles limit", "GET", "/api/battles?limit=1", "", 200, `"id":"b_000003"`, nil},
+		{"get battle", "GET", "/api/battles/b_000003", "", 200, `"patternB":{"id":"p_000002"`, nil},
+		{"get battle unknown", "GET", "/api/battles/b_zzzzzz", "", 404, `"error"`, nil},
+		{"vote battle side a", "POST", "/api/battles/b_000003/votes", `{"side":"a"}`, 200, `"votesA":1,"votesB":0`,
+			[]string{`"votes":1,"rating":1016`, `"votes":0,"rating":984`}},
+		{"vote battle side b", "POST", "/api/battles/b_000003/votes", `{"side":"b"}`, 200, `"votesA":1,"votesB":1`,
+			[]string{`"votes":1,"rating":999`, `"votes":1,"rating":1001`}},
+		{"vote battle bad side", "POST", "/api/battles/b_000003/votes", `{"side":"x"}`, 400, `"error"`, nil},
+		{"vote battle missing side", "POST", "/api/battles/b_000003/votes", `{}`, 400, `"error"`, nil},
+		{"vote battle unknown field", "POST", "/api/battles/b_000003/votes", `{"side":"a","extra":1}`, 400, `"error"`, nil},
+		{"vote battle unknown battle", "POST", "/api/battles/b_zzzzzz/votes", `{"side":"a"}`, 404, `"error"`, nil},
+		{"leaderboard shows battle votes", "GET", "/api/leaderboard", "", 200, `"votes":1`, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -134,6 +137,11 @@ func TestBattleRoutes(t *testing.T) {
 			}
 			if !strings.Contains(rec.Body.String(), tc.contains) {
 				t.Errorf("body lacks %q: %s", tc.contains, rec.Body)
+			}
+			for _, e := range tc.extra {
+				if !strings.Contains(rec.Body.String(), e) {
+					t.Errorf("body lacks %q: %s", e, rec.Body)
+				}
 			}
 		})
 	}
@@ -145,7 +153,24 @@ func TestCreatedPatternShape(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got["createdAt"] != "2026-10-26T21:00:00Z" || got["votes"] != float64(0) || got["swing"] != float64(0) {
+	if got["createdAt"] != "2026-10-26T21:00:00Z" || got["votes"] != float64(0) || got["swing"] != float64(0) ||
+		got["rating"] != float64(1000) {
 		t.Errorf("pattern = %v", got)
+	}
+}
+
+func TestRatingsRoute(t *testing.T) {
+	h := newHandler()
+	do(h, "POST", "/api/patterns", goodBody)
+	rec := do(h, "GET", "/api/ratings", "")
+	if rec.Code != 200 {
+		t.Fatalf("GET /api/ratings = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"rating"`) {
+		t.Errorf("body lacks %q: %s", `"rating"`, body)
+	}
+	if strings.Contains(body, `"bpm"`) || strings.Contains(body, `"tracks"`) {
+		t.Errorf("body should not carry the full pattern shape: %s", body)
 	}
 }

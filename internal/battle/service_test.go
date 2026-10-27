@@ -33,11 +33,23 @@ func TestCreateUsesInjectedClockAndRandom(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.ID != "p_7f3a9c" || p.Name != "one" || p.Votes != 0 {
+	if p.ID != "p_7f3a9c" || p.Name != "one" || p.Votes != 0 || p.Rating != 1000 {
 		t.Errorf("pattern = %+v", p)
 	}
 	if want := time.Date(2026, 10, 26, 21, 0, 0, 0, time.UTC); !p.CreatedAt.Equal(want) {
 		t.Errorf("createdAt = %v, want %v", p.CreatedAt, want)
+	}
+}
+
+func TestEloWorkedExample(t *testing.T) {
+	if w, l := battle.Elo(1000, 1000); w != 1016 || l != 984 {
+		t.Errorf("Elo(1000, 1000) = (%d, %d), want (1016, 984)", w, l)
+	}
+	if w, l := battle.Elo(1016, 984); w != 1031 || l != 969 {
+		t.Errorf("Elo(1016, 984) = (%d, %d), want (1031, 969)", w, l)
+	}
+	if w, l := battle.Elo(984, 1016); w != 1001 || l != 999 {
+		t.Errorf("Elo(984, 1016) = (%d, %d), want (1001, 999)", w, l)
 	}
 }
 
@@ -132,6 +144,36 @@ func TestVoteAndLeaderboard(t *testing.T) {
 	}
 }
 
+func TestRatings(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0, 3, 0, 0})
+	a, _ := svc.Create(input("a"))
+	b, _ := svc.Create(input("b"))
+	created, err := svc.CreateBattle(battle.BattleInput{PatternAID: a.ID, PatternBID: b.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.VoteBattle(created.ID, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.VoteBattle(created.ID, "a"); err != nil {
+		t.Fatal(err)
+	}
+
+	ratings := svc.Ratings()
+	if len(ratings) != 2 || ratings[0].ID != a.ID || ratings[0].Rating != 1031 ||
+		ratings[1].ID != b.ID || ratings[1].Rating != 969 {
+		t.Errorf("Ratings() = %+v", ratings)
+	}
+	if ratings[0].Name != "a" || ratings[0].Author != "brvtl" {
+		t.Errorf("Ratings()[0] = %+v", ratings[0])
+	}
+
+	board := svc.Leaderboard()
+	if len(board) == 0 || board[0].ID != a.ID || board[0].Votes != 2 {
+		t.Errorf("Leaderboard() unaffected by ratings, got = %+v", board)
+	}
+}
+
 func TestRank(t *testing.T) {
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	mk := func(id string, votes, minute int) battle.Pattern {
@@ -165,6 +207,45 @@ func TestRank(t *testing.T) {
 			for i := range orig {
 				if orig[i].ID != tc.in[i].ID {
 					t.Fatal("Rank modified its input")
+				}
+			}
+		})
+	}
+}
+
+func TestRankByRating(t *testing.T) {
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	mk := func(id string, rating, minute int) battle.Pattern {
+		return battle.Pattern{ID: id, Rating: rating, CreatedAt: base.Add(time.Duration(minute) * time.Minute)}
+	}
+	cases := []struct {
+		name string
+		in   []battle.Pattern
+		n    int
+		want string
+	}{
+		{"empty", nil, 10, ""},
+		{"by rating", []battle.Pattern{mk("a", 1000, 0), mk("b", 1031, 1), mk("c", 1016, 2)}, 10, "bca"},
+		{"tie earlier first", []battle.Pattern{mk("late", 1000, 5), mk("early", 1000, 1)}, 10, "early,late"},
+		{"same time keeps insertion", []battle.Pattern{mk("x", 1000, 1), mk("y", 1000, 1)}, 10, "xy"},
+		{"truncates", []battle.Pattern{mk("a", 1031, 0), mk("b", 1016, 0), mk("c", 1000, 0)}, 2, "ab"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			orig := append([]battle.Pattern(nil), tc.in...)
+			var got string
+			for i, p := range battle.RankByRating(tc.in, tc.n) {
+				if tc.name == "tie earlier first" && i > 0 {
+					got += ","
+				}
+				got += p.ID
+			}
+			if got != tc.want {
+				t.Errorf("RankByRating = %q, want %q", got, tc.want)
+			}
+			for i := range orig {
+				if orig[i].ID != tc.in[i].ID {
+					t.Fatal("RankByRating modified its input")
 				}
 			}
 		})
@@ -301,5 +382,39 @@ func TestVoteBattle(t *testing.T) {
 
 	if _, err := svc.VoteBattle("b_nope", "a"); !errors.Is(err, battle.ErrNotFound) {
 		t.Errorf("unknown battle err = %v", err)
+	}
+}
+
+func TestVoteBattleUpdatesRatings(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0, 3, 0, 0})
+	a, _ := svc.Create(input("a"))
+	b, _ := svc.Create(input("b"))
+	created, err := svc.CreateBattle(battle.BattleInput{PatternAID: a.ID, PatternBID: b.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := svc.VoteBattle(created.ID, "a"); err != nil {
+		t.Fatal(err)
+	}
+	gotA, _ := svc.Get(a.ID)
+	gotB, _ := svc.Get(b.ID)
+	if gotA.Rating != 1016 || gotB.Rating != 984 {
+		t.Fatalf("after first vote, ratings = a:%d b:%d, want a:1016 b:984", gotA.Rating, gotB.Rating)
+	}
+
+	beforeA, beforeB := gotA.Rating, gotB.Rating
+	if _, err := svc.VoteBattle(created.ID, "b"); err != nil {
+		t.Fatal(err)
+	}
+	wantB, wantA := battle.Elo(beforeB, beforeA)
+	gotA, _ = svc.Get(a.ID)
+	gotB, _ = svc.Get(b.ID)
+	if gotA.Rating != wantA || gotB.Rating != wantB {
+		t.Errorf("after second vote, ratings = a:%d b:%d, want a:%d b:%d (composed, not reset)",
+			gotA.Rating, gotB.Rating, wantA, wantB)
+	}
+	if gotA.Votes != 1 || gotB.Votes != 1 {
+		t.Errorf("votes = a:%d b:%d, want a:1 b:1", gotA.Votes, gotB.Votes)
 	}
 }
