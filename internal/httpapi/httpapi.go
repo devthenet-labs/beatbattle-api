@@ -27,6 +27,10 @@ func New(svc *battle.Service, revision string) http.Handler {
 	mux.HandleFunc("GET /api/patterns/{id}", a.getPattern)
 	mux.HandleFunc("POST /api/patterns/{id}/votes", a.vote)
 	mux.HandleFunc("GET /api/leaderboard", a.leaderboard)
+	mux.HandleFunc("POST /api/battles", a.createBattle)
+	mux.HandleFunc("GET /api/battles", a.listBattles)
+	mux.HandleFunc("GET /api/battles/{id}", a.getBattle)
+	mux.HandleFunc("POST /api/battles/{id}/votes", a.voteBattle)
 	mux.HandleFunc("POST /api/patterns/{id}/renders", a.requestRender)
 	mux.HandleFunc("GET /api/renders/{id}", a.getRender)
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
@@ -99,6 +103,69 @@ func (a *api) vote(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) leaderboard(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, a.svc.Leaderboard())
+}
+
+func (a *api) createBattle(w http.ResponseWriter, r *http.Request) {
+	body, ok := readBody(w, r)
+	if !ok {
+		return
+	}
+	in, err := battle.ParseBattleInput(bytes.NewReader(body))
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	v, err := a.svc.CreateBattle(in)
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, v)
+}
+
+func (a *api) listBattles(w http.ResponseWriter, r *http.Request) {
+	limit := battle.DefaultLimit
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			writeError(w, http.StatusBadRequest, "limit must be a positive integer")
+			return
+		}
+		limit = n
+	}
+	writeJSON(w, http.StatusOK, a.svc.ListBattles(limit))
+}
+
+func (a *api) getBattle(w http.ResponseWriter, r *http.Request) {
+	v, err := a.svc.GetBattle(r.PathValue("id"))
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+func (a *api) voteBattle(w http.ResponseWriter, r *http.Request) {
+	body, ok := readBody(w, r)
+	if !ok {
+		return
+	}
+	in, err := battle.ParseBattleVoteInput(bytes.NewReader(body))
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	side, err := in.Validate()
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	v, err := a.svc.VoteBattle(r.PathValue("id"), side)
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
 }
 
 func (a *api) requestRender(w http.ResponseWriter, r *http.Request) {

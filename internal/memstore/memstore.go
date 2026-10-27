@@ -67,6 +67,67 @@ func (s *Store) List() []battle.Pattern {
 	return out
 }
 
+// Battles is a battle.BattleStore that keeps insertion order.
+type Battles struct {
+	mu    sync.Mutex
+	byID  map[string]int
+	items []battle.Battle
+}
+
+// NewBattles returns an empty Battles.
+func NewBattles() *Battles { return &Battles{byID: map[string]int{}} }
+
+// Add implements battle.BattleStore.
+func (s *Battles) Add(b battle.Battle) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.byID[b.ID]; ok {
+		return battle.ErrExists
+	}
+	if len(s.items) >= battle.MaxBattles {
+		return battle.ErrStoreFull
+	}
+	s.byID[b.ID] = len(s.items)
+	s.items = append(s.items, b)
+	return nil
+}
+
+// Get implements battle.BattleStore.
+func (s *Battles) Get(id string) (battle.Battle, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i, ok := s.byID[id]
+	if !ok {
+		return battle.Battle{}, battle.ErrNotFound
+	}
+	return s.items[i], nil
+}
+
+// Vote implements battle.BattleStore.
+func (s *Battles) Vote(id, side string) (battle.Battle, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i, ok := s.byID[id]
+	if !ok {
+		return battle.Battle{}, battle.ErrNotFound
+	}
+	if side == "a" {
+		s.items[i].VotesA++
+	} else {
+		s.items[i].VotesB++
+	}
+	return s.items[i], nil
+}
+
+// List implements battle.BattleStore.
+func (s *Battles) List() []battle.Battle {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]battle.Battle, len(s.items))
+	copy(out, s.items)
+	return out
+}
+
 // Queue is a battle.RenderQueue that records jobs and never completes them.
 type Queue struct {
 	mu   sync.Mutex

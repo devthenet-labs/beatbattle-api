@@ -13,7 +13,7 @@ import (
 // newHandler wires the production adapters (memory store and queue, the wall
 // clock, crypto/rand) into the /api handler.
 func newHandler(revision string) http.Handler {
-	return newHandlerWith(battle.NewService(memstore.NewStore(), memstore.NewQueue(), time.Now, rand.Reader), revision)
+	return newHandlerWith(battle.NewService(memstore.NewStore(), memstore.NewBattles(), memstore.NewQueue(), time.Now, rand.Reader), revision)
 }
 
 // newHandlerWith serves /api over svc, behind the security headers.

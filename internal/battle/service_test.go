@@ -17,7 +17,7 @@ func (c *clock) now() time.Time { return c.t }
 func newService(t *testing.T, random []byte) (*battle.Service, *clock) {
 	t.Helper()
 	c := &clock{t: time.Date(2026, 10, 26, 21, 0, 0, 123, time.UTC)}
-	return battle.NewService(memstore.NewStore(), memstore.NewQueue(), c.now, bytes.NewReader(random)), c
+	return battle.NewService(memstore.NewStore(), memstore.NewBattles(), memstore.NewQueue(), c.now, bytes.NewReader(random)), c
 }
 
 func input(name string) battle.Input {
@@ -190,5 +190,116 @@ func TestRenderLifecycle(t *testing.T) {
 	}
 	if _, err := svc.Render("r_nope"); !errors.Is(err, battle.ErrNotFound) {
 		t.Errorf("unknown render err = %v", err)
+	}
+}
+
+func TestCreateBattle(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0, 0xab, 0xcd, 0xef})
+	a, _ := svc.Create(input("a"))
+	b, _ := svc.Create(input("b"))
+
+	v, err := svc.CreateBattle(battle.BattleInput{PatternAID: a.ID, PatternBID: b.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.ID != "b_abcdef" || v.PatternA.ID != a.ID || v.PatternB.ID != b.ID || v.VotesA != 0 || v.VotesB != 0 {
+		t.Errorf("battle = %+v", v)
+	}
+
+	if _, err := svc.CreateBattle(battle.BattleInput{PatternBID: b.ID}); !errors.Is(err, battle.ErrInvalid) {
+		t.Errorf("missing patternAId err = %v", err)
+	}
+	if _, err := svc.CreateBattle(battle.BattleInput{PatternAID: a.ID}); !errors.Is(err, battle.ErrInvalid) {
+		t.Errorf("missing patternBId err = %v", err)
+	}
+	if _, err := svc.CreateBattle(battle.BattleInput{PatternAID: a.ID, PatternBID: a.ID}); !errors.Is(err, battle.ErrInvalid) {
+		t.Errorf("same id err = %v", err)
+	}
+	if _, err := svc.CreateBattle(battle.BattleInput{PatternAID: "p_nope", PatternBID: b.ID}); !errors.Is(err, battle.ErrNotFound) {
+		t.Errorf("unknown patternAId err = %v", err)
+	}
+	if _, err := svc.CreateBattle(battle.BattleInput{PatternAID: a.ID, PatternBID: "p_nope"}); !errors.Is(err, battle.ErrNotFound) {
+		t.Errorf("unknown patternBId err = %v", err)
+	}
+}
+
+func TestGetBattle(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0, 3, 0, 0})
+	a, _ := svc.Create(input("a"))
+	b, _ := svc.Create(input("b"))
+	created, err := svc.CreateBattle(battle.BattleInput{PatternAID: a.ID, PatternBID: b.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.GetBattle(created.ID)
+	if err != nil || got.ID != created.ID || got.PatternA.ID != a.ID || got.PatternB.ID != b.ID {
+		t.Errorf("GetBattle = %+v, %v", got, err)
+	}
+	if _, err := svc.GetBattle("b_nope"); !errors.Is(err, battle.ErrNotFound) {
+		t.Errorf("unknown battle err = %v", err)
+	}
+}
+
+func TestListBattlesNewestFirstAndLimits(t *testing.T) {
+	random := make([]byte, 0, 3*160)
+	for i := 0; i < 160; i++ {
+		random = append(random, byte(i), 0, 0)
+	}
+	svc, _ := newService(t, random)
+	a, _ := svc.Create(input("a"))
+	b, _ := svc.Create(input("b"))
+	var ids []string
+	for i := 0; i < 150; i++ {
+		v, err := svc.CreateBattle(battle.BattleInput{PatternAID: a.ID, PatternBID: b.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, v.ID)
+	}
+	cases := []struct{ limit, want int }{{1, 1}, {20, 20}, {100, 100}, {500, 100}, {0, 1}}
+	for _, tc := range cases {
+		if got := len(svc.ListBattles(tc.limit)); got != tc.want {
+			t.Errorf("ListBattles(%d) = %d items, want %d", tc.limit, got, tc.want)
+		}
+	}
+	if first := svc.ListBattles(2); first[0].ID != ids[len(ids)-1] {
+		t.Errorf("newest = %s, want %s", first[0].ID, ids[len(ids)-1])
+	}
+}
+
+func TestVoteBattle(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0, 3, 0, 0})
+	a, _ := svc.Create(input("a"))
+	b, _ := svc.Create(input("b"))
+	created, err := svc.CreateBattle(battle.BattleInput{PatternAID: a.ID, PatternBID: b.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	v, err := svc.VoteBattle(created.ID, "a")
+	if err != nil || v.VotesA != 1 || v.VotesB != 0 {
+		t.Fatalf("VoteBattle a = %+v, %v", v, err)
+	}
+	v, err = svc.VoteBattle(created.ID, "b")
+	if err != nil || v.VotesA != 1 || v.VotesB != 1 {
+		t.Fatalf("VoteBattle b = %+v, %v", v, err)
+	}
+	v, err = svc.VoteBattle(created.ID, "a")
+	if err != nil || v.VotesA != 2 || v.VotesB != 1 {
+		t.Fatalf("VoteBattle a again = %+v, %v", v, err)
+	}
+
+	gotA, _ := svc.Get(a.ID)
+	gotB, _ := svc.Get(b.ID)
+	if gotA.Votes != 2 || gotB.Votes != 1 {
+		t.Errorf("pattern votes = a:%d b:%d, want a:2 b:1", gotA.Votes, gotB.Votes)
+	}
+	board := svc.Leaderboard()
+	if len(board) == 0 || board[0].ID != a.ID {
+		t.Errorf("leaderboard top = %+v, want %s first", board, a.ID)
+	}
+
+	if _, err := svc.VoteBattle("b_nope", "a"); !errors.Is(err, battle.ErrNotFound) {
+		t.Errorf("unknown battle err = %v", err)
 	}
 }

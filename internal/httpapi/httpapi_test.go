@@ -24,7 +24,7 @@ func (c *counterRand) Read(p []byte) (int, error) {
 
 func newHandler() http.Handler {
 	now := func() time.Time { return time.Date(2026, 10, 26, 21, 0, 0, 0, time.UTC) }
-	svc := battle.NewService(memstore.NewStore(), memstore.NewQueue(), now, &counterRand{})
+	svc := battle.NewService(memstore.NewStore(), memstore.NewBattles(), memstore.NewQueue(), now, &counterRand{})
 	return httpapi.New(svc, "abc123")
 }
 
@@ -90,10 +90,52 @@ func TestRoutes(t *testing.T) {
 
 func TestEmptyListsAreArrays(t *testing.T) {
 	h := newHandler()
-	for _, path := range []string{"/api/patterns", "/api/leaderboard"} {
+	for _, path := range []string{"/api/patterns", "/api/leaderboard", "/api/battles"} {
 		if got := strings.TrimSpace(do(h, "GET", path, "").Body.String()); got != "[]" {
 			t.Errorf("%s = %s, want []", path, got)
 		}
+	}
+}
+
+func TestBattleRoutes(t *testing.T) {
+	h := newHandler()
+	cases := []struct {
+		name, method, path, body string
+		status                   int
+		contains                 string
+	}{
+		{"create pattern a", "POST", "/api/patterns", goodBody, 201, `"id":"p_000001"`},
+		{"create pattern b", "POST", "/api/patterns", goodBody, 201, `"id":"p_000002"`},
+		{"create battle missing patternAId", "POST", "/api/battles", `{"patternBId":"p_000002"}`, 400, `"error"`},
+		{"create battle same id", "POST", "/api/battles",
+			`{"patternAId":"p_000001","patternBId":"p_000001"}`, 400, `"error"`},
+		{"create battle unknown pattern id", "POST", "/api/battles",
+			`{"patternAId":"p_zzzzzz","patternBId":"p_000002"}`, 404, `"error"`},
+		{"create battle success", "POST", "/api/battles",
+			`{"patternAId":"p_000001","patternBId":"p_000002"}`, 201,
+			`"id":"b_000003","patternA":{"id":"p_000001"`},
+		{"list battles", "GET", "/api/battles", "", 200, `"id":"b_000003"`},
+		{"list battles limit", "GET", "/api/battles?limit=1", "", 200, `"id":"b_000003"`},
+		{"get battle", "GET", "/api/battles/b_000003", "", 200, `"patternB":{"id":"p_000002"`},
+		{"get battle unknown", "GET", "/api/battles/b_zzzzzz", "", 404, `"error"`},
+		{"vote battle side a", "POST", "/api/battles/b_000003/votes", `{"side":"a"}`, 200, `"votesA":1,"votesB":0`},
+		{"vote battle side b", "POST", "/api/battles/b_000003/votes", `{"side":"b"}`, 200, `"votesA":1,"votesB":1`},
+		{"vote battle bad side", "POST", "/api/battles/b_000003/votes", `{"side":"x"}`, 400, `"error"`},
+		{"vote battle missing side", "POST", "/api/battles/b_000003/votes", `{}`, 400, `"error"`},
+		{"vote battle unknown field", "POST", "/api/battles/b_000003/votes", `{"side":"a","extra":1}`, 400, `"error"`},
+		{"vote battle unknown battle", "POST", "/api/battles/b_zzzzzz/votes", `{"side":"a"}`, 404, `"error"`},
+		{"leaderboard shows battle votes", "GET", "/api/leaderboard", "", 200, `"votes":1`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := do(h, tc.method, tc.path, tc.body)
+			if rec.Code != tc.status {
+				t.Fatalf("%s %s = %d, want %d: %s", tc.method, tc.path, rec.Code, tc.status, rec.Body)
+			}
+			if !strings.Contains(rec.Body.String(), tc.contains) {
+				t.Errorf("body lacks %q: %s", tc.contains, rec.Body)
+			}
+		})
 	}
 }
 
