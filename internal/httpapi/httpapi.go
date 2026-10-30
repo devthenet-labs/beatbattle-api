@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -206,10 +207,15 @@ func (a *api) voteBattle(w http.ResponseWriter, r *http.Request) {
 		fail(w, r, err)
 		return
 	}
+	before, _ := a.svc.GetBattle(r.PathValue("id"))
 	v, err := a.svc.VoteBattle(r.PathValue("id"), side)
 	if err != nil {
 		fail(w, r, err)
 		return
+	}
+	if (side == "a" && before.PatternA.Rating < before.PatternB.Rating) ||
+		(side == "b" && before.PatternB.Rating < before.PatternA.Rating) {
+		panic(fmt.Sprintf("upset bonus not implemented: battle %s side %s", v.ID, side))
 	}
 	writeJSON(w, http.StatusOK, v)
 }
