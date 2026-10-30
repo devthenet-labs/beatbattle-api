@@ -36,13 +36,16 @@ tracks are rejected; `id`, `parentId`, `remixCount`, `votes`, `rating` and `crea
 `POST /api/patterns`. `POST /api/patterns/{id}/remix`'s body is `{"name": "...", "author": "..."}` only: `tracks`,
 `bpm` and `swing` are always copied from the original.
 
-A battle is `{id, patternA, patternB, votesA, votesB, createdAt}`, where `patternA`/`patternB` are the full pattern
-shape above, joined live from the pattern store on every read; the battle id is `b_` followed by 6 lowercase hex
-characters, drawn the same way as pattern (`p_`) and render (`r_`) ids. `POST /api/battles/{id}/votes` takes
-`{"side": "a"}` or `{"side": "b"}`; voting on a battle side also adds one vote to that pattern's normal vote count,
-so it also rises on `GET /api/leaderboard`, and updates both patterns' Elo rating (K=32, from the ratings as they
-stood before this vote, rounded to the nearest whole number; the voted-for pattern is the winner). The full battle
-view returned by that endpoint already carries both patterns' updated rating and votes inside `patternA`/`patternB`.
+A battle is `{id, patternA, patternB, votesA, votesB, createdAt, stakes}`, where `patternA`/`patternB` are the full
+pattern shape above, joined live from the pattern store on every read; the battle id is `b_` followed by 6 lowercase
+hex characters, drawn the same way as pattern (`p_`) and render (`r_`) ids. `stakes` is `{"a": N, "b": M}`, the rating
+points each side would gain if it got the next vote from the ratings carried in this same response, computed with
+the same Elo formula and K as the rating update below; the side with the lower rating has the larger stake.
+`POST /api/battles/{id}/votes` takes `{"side": "a"}` or `{"side": "b"}`; voting on a battle side also adds one vote
+to that pattern's normal vote count, so it also rises on `GET /api/leaderboard`, and updates both patterns' Elo
+rating (K=32, from the ratings as they stood before this vote, rounded to the nearest whole number; the voted-for
+pattern is the winner). The full battle view returned by that endpoint already carries both patterns' updated rating
+and votes inside `patternA`/`patternB`, and `stakes` computed from those post-vote ratings.
 
 Both vote endpoints share one rate limit of 3 votes per client per 10 seconds, counted together; the client is the
 `X-Client-Id` request header, and requests without it share one bucket; a vote past the limit answers 429 with a
