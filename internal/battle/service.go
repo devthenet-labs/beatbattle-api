@@ -337,6 +337,29 @@ func (s *Service) VoteBattle(id, side string) (BattleView, error) {
 	return s.view(b, a, bside), nil
 }
 
+// Record returns id's battle record: a vote for id in a battle is a win,
+// a vote for its opponent is a loss, and Battles counts the battles id is
+// in (not their votes). ErrNotFound for an unknown pattern id.
+func (s *Service) Record(id string) (Record, error) {
+	if _, err := s.store.Get(id); err != nil {
+		return Record{}, err
+	}
+	var rec Record
+	for _, b := range s.battles.List() {
+		switch id {
+		case b.PatternAID:
+			rec.Wins += b.VotesA
+			rec.Losses += b.VotesB
+			rec.Battles++
+		case b.PatternBID:
+			rec.Wins += b.VotesB
+			rec.Losses += b.VotesA
+			rec.Battles++
+		}
+	}
+	return rec, nil
+}
+
 // RequestRender queues a render of an existing pattern.
 func (s *Service) RequestRender(patternID string) (RenderJob, error) {
 	if _, err := s.store.Get(patternID); err != nil {
