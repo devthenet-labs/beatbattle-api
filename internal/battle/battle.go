@@ -73,13 +73,21 @@ func (in BattleVoteInput) Validate() (string, error) {
 	return in.Side, nil
 }
 
+// BattleStakes is the rating points each side of a battle would gain if
+// it got the next vote, from the ratings as they stand now.
+type BattleStakes struct {
+	A int `json:"a"`
+	B int `json:"b"`
+}
+
 // BattleView is the full shape served by every battle endpoint: a battle
 // joined with its two live patterns.
 type BattleView struct {
-	ID        string    `json:"id"`
-	PatternA  Pattern   `json:"patternA"`
-	PatternB  Pattern   `json:"patternB"`
-	VotesA    int       `json:"votesA"`
-	VotesB    int       `json:"votesB"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID        string       `json:"id"`
+	PatternA  Pattern      `json:"patternA"`
+	PatternB  Pattern      `json:"patternB"`
+	VotesA    int          `json:"votesA"`
+	VotesB    int          `json:"votesB"`
+	CreatedAt time.Time    `json:"createdAt"`
+	Stakes    BattleStakes `json:"stakes"`
 }

@@ -139,15 +139,15 @@ func TestBattleRoutes(t *testing.T) {
 			`{"patternAId":"p_zzzzzz","patternBId":"p_000002"}`, 404, `"error"`, nil, ""},
 		{"create battle success", "POST", "/api/battles",
 			`{"patternAId":"p_000001","patternBId":"p_000002"}`, 201,
-			`"id":"b_000003","patternA":{"id":"p_000001"`, nil, ""},
+			`"id":"b_000003","patternA":{"id":"p_000001"`, []string{`"stakes":{"a":16,"b":16}`}, ""},
 		{"list battles", "GET", "/api/battles", "", 200, `"id":"b_000003"`, nil, ""},
 		{"list battles limit", "GET", "/api/battles?limit=1", "", 200, `"id":"b_000003"`, nil, ""},
 		{"get battle", "GET", "/api/battles/b_000003", "", 200, `"patternB":{"id":"p_000002"`, nil, ""},
 		{"get battle unknown", "GET", "/api/battles/b_zzzzzz", "", 404, `"error"`, nil, ""},
 		{"vote battle side a", "POST", "/api/battles/b_000003/votes", `{"side":"a"}`, 200, `"votesA":1,"votesB":0`,
-			[]string{`"votes":1,"rating":1016`, `"votes":0,"rating":984`}, ""},
+			[]string{`"votes":1,"rating":1016`, `"votes":0,"rating":984`, `"stakes":{"a":15,"b":17}`}, ""},
 		{"vote battle side b", "POST", "/api/battles/b_000003/votes", `{"side":"b"}`, 200, `"votesA":1,"votesB":1`,
-			[]string{`"votes":1,"rating":999`, `"votes":1,"rating":1001`}, ""},
+			[]string{`"votes":1,"rating":999`, `"votes":1,"rating":1001`, `"stakes":{"a":16,"b":16}`}, ""},
 		{"vote battle bad side", "POST", "/api/battles/b_000003/votes", `{"side":"x"}`, 400, `"error"`, nil, ""},
 		// These three deliberately use distinct X-Client-Id values: the
 		// three header-less votes above already fill the shared empty-key

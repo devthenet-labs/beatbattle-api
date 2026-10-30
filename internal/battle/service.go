@@ -213,6 +213,7 @@ func (s *Service) view(b Battle, a, bside Pattern) BattleView {
 	return BattleView{
 		ID: b.ID, PatternA: s.withRemixCount(a), PatternB: s.withRemixCount(bside),
 		VotesA: b.VotesA, VotesB: b.VotesB, CreatedAt: b.CreatedAt,
+		Stakes: Stakes(a.Rating, bside.Rating),
 	}
 }
 

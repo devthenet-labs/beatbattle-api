@@ -15,3 +15,13 @@ func Elo(winner, loser int) (newWinner, newLoser int) {
 	newLoser = int(math.Round(float64(loser) - K*(1-expectedWinner)))
 	return newWinner, newLoser
 }
+
+// Stakes returns the rating points side A and side B of a battle would
+// each gain if they got the next vote, from ratingA and ratingB as they
+// stand now, using the same Elo formula and K as Elo. An upset pays more:
+// the lower-rated side's stake is the larger one.
+func Stakes(ratingA, ratingB int) BattleStakes {
+	newA, _ := Elo(ratingA, ratingB)
+	newB, _ := Elo(ratingB, ratingA)
+	return BattleStakes{A: newA - ratingA, B: newB - ratingB}
+}

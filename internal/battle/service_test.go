@@ -53,6 +53,24 @@ func TestEloWorkedExample(t *testing.T) {
 	}
 }
 
+func TestStakesWorkedExample(t *testing.T) {
+	if got := battle.Stakes(1000, 1000); got != (battle.BattleStakes{A: 16, B: 16}) {
+		t.Errorf("Stakes(1000, 1000) = %+v, want {16 16}", got)
+	}
+	stakes := battle.Stakes(900, 1100)
+	if stakes.A <= stakes.B {
+		t.Errorf("Stakes(900, 1100) = %+v, want A (lower rating) > B (higher rating)", stakes)
+	}
+	gotA, _ := battle.Elo(900, 1100)
+	if gotA-900 != stakes.A {
+		t.Errorf("Stakes(900, 1100).A = %d, want %d (what Elo would add to A if it won)", stakes.A, gotA-900)
+	}
+	gotB, _ := battle.Elo(1100, 900)
+	if gotB-1100 != stakes.B {
+		t.Errorf("Stakes(900, 1100).B = %d, want %d (what Elo would add to B if it won)", stakes.B, gotB-1100)
+	}
+}
+
 func TestCreateRetriesOnIDCollision(t *testing.T) {
 	svc, _ := newService(t, []byte{1, 2, 3, 1, 2, 3, 4, 5, 6})
 	a, _ := svc.Create(input("a"))
@@ -522,7 +540,9 @@ func TestVoteBattleUpdatesRatings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := svc.VoteBattle(created.ID, "a"); err != nil {
+	stakeABeforeFirstVote := created.Stakes.A
+	voted, err := svc.VoteBattle(created.ID, "a")
+	if err != nil {
 		t.Fatal(err)
 	}
 	gotA, _ := svc.Get(a.ID)
@@ -530,8 +550,12 @@ func TestVoteBattleUpdatesRatings(t *testing.T) {
 	if gotA.Rating != 1016 || gotB.Rating != 984 {
 		t.Fatalf("after first vote, ratings = a:%d b:%d, want a:1016 b:984", gotA.Rating, gotB.Rating)
 	}
+	if gotA.Rating-1000 != stakeABeforeFirstVote {
+		t.Errorf("first vote raised a's rating by %d, want the pre-vote stake %d", gotA.Rating-1000, stakeABeforeFirstVote)
+	}
 
 	beforeA, beforeB := gotA.Rating, gotB.Rating
+	stakeBBeforeSecondVote := voted.Stakes.B
 	if _, err := svc.VoteBattle(created.ID, "b"); err != nil {
 		t.Fatal(err)
 	}
@@ -541,6 +565,9 @@ func TestVoteBattleUpdatesRatings(t *testing.T) {
 	if gotA.Rating != wantA || gotB.Rating != wantB {
 		t.Errorf("after second vote, ratings = a:%d b:%d, want a:%d b:%d (composed, not reset)",
 			gotA.Rating, gotB.Rating, wantA, wantB)
+	}
+	if gotB.Rating-beforeB != stakeBBeforeSecondVote {
+		t.Errorf("second vote raised b's rating by %d, want the pre-vote stake %d", gotB.Rating-beforeB, stakeBBeforeSecondVote)
 	}
 	if gotA.Votes != 1 || gotB.Votes != 1 {
 		t.Errorf("votes = a:%d b:%d, want a:1 b:1", gotA.Votes, gotB.Votes)
