@@ -87,6 +87,31 @@ func TestBattlesGetAndVote(t *testing.T) {
 	}
 }
 
+func TestHistoryAppendAndList(t *testing.T) {
+	h := NewHistory()
+	if l := h.List("p_1"); l == nil || len(l) != 0 {
+		t.Fatalf("List with nothing recorded = %v, want empty non-nil slice", l)
+	}
+
+	h.Append("p_1", battle.RatingHistoryEntry{BattleID: "b_1", Before: 1000, After: 1016})
+	h.Append("p_1", battle.RatingHistoryEntry{BattleID: "b_2", Before: 1016, After: 1031})
+	h.Append("p_2", battle.RatingHistoryEntry{BattleID: "b_1", Before: 1000, After: 984})
+
+	got1 := h.List("p_1")
+	if len(got1) != 2 || got1[0].BattleID != "b_1" || got1[1].BattleID != "b_2" {
+		t.Errorf("List(p_1) = %+v, want [b_1 b_2] in insertion order", got1)
+	}
+	got2 := h.List("p_2")
+	if len(got2) != 1 || got2[0].BattleID != "b_1" || got2[0].After != 984 {
+		t.Errorf("List(p_2) = %+v, want one entry for b_1", got2)
+	}
+
+	got1[0].BattleID = "mutated"
+	if again := h.List("p_1"); again[0].BattleID != "b_1" {
+		t.Error("List returned a slice aliased with the stored one")
+	}
+}
+
 func TestQueueLimitsAndDuplicates(t *testing.T) {
 	q := NewQueue()
 	for i := 0; i < battle.MaxRenders; i++ {

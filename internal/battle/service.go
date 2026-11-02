@@ -13,14 +13,15 @@ type Service struct {
 	store   Store
 	battles BattleStore
 	queue   RenderQueue
+	history RatingHistory
 	now     func() time.Time
 	random  io.Reader
 }
 
 // NewService wires the core. now and random are injected; production passes
 // time.Now and crypto/rand.Reader.
-func NewService(store Store, battles BattleStore, queue RenderQueue, now func() time.Time, random io.Reader) *Service {
-	return &Service{store: store, battles: battles, queue: queue, now: now, random: random}
+func NewService(store Store, battles BattleStore, queue RenderQueue, history RatingHistory, now func() time.Time, random io.Reader) *Service {
+	return &Service{store: store, battles: battles, queue: queue, history: history, now: now, random: random}
 }
 
 const idAttempts = 5
@@ -315,12 +316,15 @@ func (s *Service) VoteBattle(id, side string) (BattleView, error) {
 		return BattleView{}, err
 	}
 	newWinnerRating, newLoserRating := Elo(winner.Rating, loser.Rating)
+	at := s.now().UTC().Truncate(time.Second)
 	if err := s.store.SetRating(winnerID, newWinnerRating); err != nil {
 		return BattleView{}, err
 	}
 	if err := s.store.SetRating(loserID, newLoserRating); err != nil {
 		return BattleView{}, err
 	}
+	s.history.Append(winnerID, RatingHistoryEntry{BattleID: id, Before: winner.Rating, After: newWinnerRating, At: at})
+	s.history.Append(loserID, RatingHistoryEntry{BattleID: id, Before: loser.Rating, After: newLoserRating, At: at})
 	if _, err := s.store.Vote(winnerID); err != nil {
 		return BattleView{}, err
 	}
@@ -360,6 +364,20 @@ func (s *Service) Record(id string) (Record, error) {
 		}
 	}
 	return rec, nil
+}
+
+// History returns id's rating-history entries, newest first. ErrNotFound for
+// an unknown pattern id.
+func (s *Service) History(id string) ([]RatingHistoryEntry, error) {
+	if _, err := s.store.Get(id); err != nil {
+		return nil, err
+	}
+	entries := s.history.List(id)
+	out := make([]RatingHistoryEntry, 0, len(entries))
+	for i := len(entries) - 1; i >= 0; i-- {
+		out = append(out, entries[i])
+	}
+	return out, nil
 }
 
 // RequestRender queues a render of an existing pattern.

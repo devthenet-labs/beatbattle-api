@@ -27,6 +27,7 @@ func New(svc *battle.Service, revision string, now func() time.Time) http.Handle
 	mux.HandleFunc("GET /api/patterns", a.listPatterns)
 	mux.HandleFunc("GET /api/patterns/{id}", a.getPattern)
 	mux.HandleFunc("GET /api/patterns/{id}/record", a.getRecord)
+	mux.HandleFunc("GET /api/patterns/{id}/history", a.getHistory)
 	mux.HandleFunc("POST /api/patterns/{id}/votes", a.vote)
 	mux.HandleFunc("POST /api/patterns/{id}/remix", a.remixPattern)
 	mux.HandleFunc("GET /api/leaderboard", a.leaderboard)
@@ -115,6 +116,15 @@ func (a *api) getRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, rec)
+}
+
+func (a *api) getHistory(w http.ResponseWriter, r *http.Request) {
+	entries, err := a.svc.History(r.PathValue("id"))
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, entries)
 }
 
 func (a *api) remixPattern(w http.ResponseWriter, r *http.Request) {

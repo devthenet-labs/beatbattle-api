@@ -17,6 +17,7 @@ Errors are JSON `{"error": "<message>"}`. Request bodies are limited to 16 KiB (
 | `GET /api/patterns?limit=N`          | bare JSON array, newest first; default 20, maximum 100 (larger is clamped; non-numeric or < 1 is 400) |
 | `GET /api/patterns/{id}`             | the pattern, or 404                                                                      |
 | `GET /api/patterns/{id}/record`      | `{"wins":N,"losses":M,"battles":K}`, or 404                                              |
+| `GET /api/patterns/{id}/history`     | bare JSON array, newest first: one entry per battle vote the pattern was in, each {battleId, before, after, at}; empty for a pattern never in a voted battle; 404 for an unknown id |
 | `POST /api/patterns/{id}/votes`      | 200 `{"votes": N}`, or 404; past 3 votes per client per 10 seconds, 429 `too many votes` with `Retry-After` |
 | `POST /api/patterns/{id}/remix`      | 201 with the new pattern; 400 for an invalid `name`/`author`; 404 for an unknown id      |
 | `GET /api/leaderboard`               | bare JSON array: top 10 by votes, ties to the earlier `createdAt`                        |
@@ -47,6 +48,8 @@ characters, drawn the same way as pattern (`p_`) and render (`r_`) ids. `POST /a
 so it also rises on `GET /api/leaderboard`, and updates both patterns' Elo rating (K=32, from the ratings as they
 stood before this vote, rounded to the nearest whole number; the voted-for pattern is the winner). The full battle
 view returned by that endpoint already carries both patterns' updated rating and votes inside `patternA`/`patternB`.
+Each battle vote also appends one rating-history entry per pattern it involves, so the newest entry's `after` always
+equals that pattern's current `rating`.
 `GET /api/patterns/{id}/record` gives one pattern's record across every battle it is in: a battle vote for the
 pattern is a win, a vote for its opponent is a loss, and `battles` counts the battles the pattern is in, not their
 votes.
