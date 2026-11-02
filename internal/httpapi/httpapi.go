@@ -96,7 +96,7 @@ func (a *api) listPatterns(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = n
 	}
-	writeJSON(w, http.StatusOK, a.svc.List(limit))
+	writeJSON(w, http.StatusOK, a.svc.List(limit, r.URL.Query().Get("tag")))
 }
 
 func (a *api) getPattern(w http.ResponseWriter, r *http.Request) {

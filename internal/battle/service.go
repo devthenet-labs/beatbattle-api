@@ -48,7 +48,7 @@ func (s *Service) Create(in Input) (Pattern, error) {
 		p := Pattern{
 			ID: id, Name: in.Name, Author: in.Author, BPM: in.BPM, Swing: in.Swing,
 			LengthMs: LengthMs(in.BPM),
-			Tracks:   in.Tracks, Rating: 1000, CreatedAt: s.now().UTC().Truncate(time.Second),
+			Tracks:   in.Tracks, Tags: in.Tags, Rating: 1000, CreatedAt: s.now().UTC().Truncate(time.Second),
 		}.Clone()
 		switch err := s.store.Add(p); err {
 		case nil:
@@ -140,18 +140,33 @@ func (s *Service) withRemixCount(p Pattern) Pattern {
 // Vote adds a vote and returns the new count.
 func (s *Service) Vote(id string) (int, error) { return s.store.Vote(id) }
 
-// List returns the newest patterns first. limit is clamped to 1..MaxLimit.
-func (s *Service) List(limit int) []Pattern {
+// List returns the newest patterns first, optionally filtered to patterns
+// carrying tag (an empty tag means no filter). limit is clamped to
+// 1..MaxLimit.
+func (s *Service) List(limit int, tag string) []Pattern {
 	limit = max(1, min(limit, MaxLimit))
 	all := s.store.List()
 	counts := remixCounts(all)
 	out := make([]Pattern, 0, min(limit, len(all)))
 	for i := len(all) - 1; i >= 0 && len(out) < limit; i-- {
 		p := all[i]
+		if tag != "" && !hasTag(p.Tags, tag) {
+			continue
+		}
 		p.RemixCount = counts[p.ID]
 		out = append(out, p)
 	}
 	return out
+}
+
+// hasTag reports whether tags contains an exact match for tag.
+func hasTag(tags []string, tag string) bool {
+	for _, t := range tags {
+		if t == tag {
+			return true
+		}
+	}
+	return false
 }
 
 // Leaderboard returns the top patterns by votes.

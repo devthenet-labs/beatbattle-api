@@ -13,8 +13,8 @@ Errors are JSON `{"error": "<message>"}`. Request bodies are limited to 16 KiB (
 | Method and path                      | Result                                                                                   |
 | ------------------------------------ | ---------------------------------------------------------------------------------------- |
 | `GET /api/healthz`                   | `{"status":"ok","revision":"<sha>"}`                                                     |
-| `POST /api/patterns`                 | 201 with the stored pattern (`id` is `p_` + 6 hex); invalid input 400; past 1000 patterns 507 `store full` |
-| `GET /api/patterns?limit=N`          | bare JSON array, newest first; default 20, maximum 100 (larger is clamped; non-numeric or < 1 is 400) |
+| `POST /api/patterns`                 | 201 with the stored pattern (`id` is `p_` + 6 hex); accepts an optional `tags` list; invalid input, including bad tags, 400; past 1000 patterns 507 `store full` |
+| `GET /api/patterns?limit=N&tag=<tag>`| bare JSON array, newest first; default 20, maximum 100 (larger is clamped; non-numeric or < 1 is 400); `tag` optionally filters the list to patterns carrying that exact tag |
 | `GET /api/patterns/{id}`             | the pattern, or 404                                                                      |
 | `GET /api/patterns/{id}/record`      | `{"wins":N,"losses":M,"battles":K}`, or 404                                              |
 | `POST /api/patterns/{id}/votes`      | 200 `{"votes": N}`, or 404; past 3 votes per client per 10 seconds, 429 `too many votes` with `Retry-After` |
@@ -28,9 +28,11 @@ Errors are JSON `{"error": "<message>"}`. Request bodies are limited to 16 KiB (
 | `GET /api/battles/{id}`              | the battle, or 404                                                                       |
 | `POST /api/battles/{id}/votes`       | 200 with the updated battle; 400 for a missing/invalid `side`; 404 for an unknown battle id; past 3 votes per client per 10 seconds, 429 `too many votes` with `Retry-After` |
 
-A pattern is `{id, parentId, remixCount, name, author, bpm, swing, lengthMs, tracks:{kick,snare,hat}, votes, rating,
-createdAt}`; each track is exactly 16 booleans. `name` is 1-40 characters after trimming with no control characters,
-`author` 1-24 of `[A-Za-z0-9_-]`, `bpm` an integer 60-200, `swing` an integer 0-60. `lengthMs` is how long one pass of
+A pattern is `{id, parentId, remixCount, name, author, bpm, swing, lengthMs, tracks:{kick,snare,hat}, tags, votes,
+rating, createdAt}`; each track is exactly 16 booleans. `name` is 1-40 characters after trimming with no control
+characters, `author` 1-24 of `[A-Za-z0-9_-]`, `bpm` an integer 60-200, `swing` an integer 0-60. `tags` is 0-5 strings,
+each 1-16 lowercase letters, digits or hyphens, with no tag repeated in the same list; anything else is 400. It is
+always present, `[]` when the pattern carries no tags. `lengthMs` is how long one pass of
 the pattern's 16 steps lasts at its `bpm`, in whole milliseconds (16 sixteenth notes: `60000 / bpm * 4`, rounded to
 the nearest millisecond); swing does not change it. It is computed from `bpm` when a pattern is created or remixed
 and cannot be set by a client. `rating` starts at 1000 and moves
@@ -38,7 +40,8 @@ only through battle votes (Elo, K=32). `parentId` is empty for an original patte
 remixed from; `remixCount` is how many stored patterns have that pattern as their `parentId`. Unknown fields and
 tracks are rejected; `id`, `parentId`, `remixCount`, `votes`, `rating` and `createdAt` are ignored on input to
 `POST /api/patterns`. `POST /api/patterns/{id}/remix`'s body is `{"name": "...", "author": "..."}` only: `tracks`,
-`bpm` and `swing` are always copied from the original.
+`bpm` and `swing` are always copied from the original, and the remix always starts with an empty `tags` list
+regardless of the original's tags.
 
 A battle is `{id, patternA, patternB, votesA, votesB, createdAt}`, where `patternA`/`patternB` are the full pattern
 shape above, joined live from the pattern store on every read; the battle id is `b_` followed by 6 lowercase hex

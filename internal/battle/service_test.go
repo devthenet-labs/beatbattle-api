@@ -27,6 +27,12 @@ func input(name string) battle.Input {
 		"kick": on, "snare": make([]bool, battle.Steps), "hat": make([]bool, battle.Steps)}}
 }
 
+func inputWithTags(name string, tags []string) battle.Input {
+	in := input(name)
+	in.Tags = tags
+	return in
+}
+
 func TestCreateUsesInjectedClockAndRandom(t *testing.T) {
 	svc, _ := newService(t, []byte{0x7f, 0x3a, 0x9c})
 	p, err := svc.Create(input("  one  "))
@@ -110,12 +116,39 @@ func TestListNewestFirstAndLimits(t *testing.T) {
 	}
 	cases := []struct{ limit, want int }{{1, 1}, {20, 20}, {100, 100}, {500, 100}, {0, 1}}
 	for _, tc := range cases {
-		if got := len(svc.List(tc.limit)); got != tc.want {
+		if got := len(svc.List(tc.limit, "")); got != tc.want {
 			t.Errorf("List(%d) = %d items, want %d", tc.limit, got, tc.want)
 		}
 	}
-	if first := svc.List(2)[0]; first.ID != "p_950000" {
+	if first := svc.List(2, "")[0]; first.ID != "p_950000" {
 		t.Errorf("newest = %s, want p_950000", first.ID)
+	}
+}
+
+func TestListFiltersByTag(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0, 3, 0, 0})
+	lofi, err := svc.Create(inputWithTags("lofi+chill", []string{"lofi", "chill"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Create(inputWithTags("trap", []string{"trap"})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Create(input("plain")); err != nil {
+		t.Fatal(err)
+	}
+
+	lofiOnly := svc.List(battle.MaxLimit, "lofi")
+	if len(lofiOnly) != 1 || lofiOnly[0].ID != lofi.ID {
+		t.Errorf("List(.., %q) = %+v, want only %s", "lofi", lofiOnly, lofi.ID)
+	}
+
+	if got := svc.List(battle.MaxLimit, "nope"); len(got) != 0 {
+		t.Errorf("List(.., %q) = %+v, want none", "nope", got)
+	}
+
+	if all := svc.List(battle.MaxLimit, ""); len(all) != 3 {
+		t.Errorf("List(.., \"\") = %d patterns, want 3", len(all))
 	}
 }
 
@@ -179,7 +212,7 @@ func TestRemixInvalidInput(t *testing.T) {
 	if _, err := svc.Remix(orig.ID, battle.RemixInput{}); !errors.Is(err, battle.ErrInvalid) {
 		t.Errorf("err = %v, want ErrInvalid", err)
 	}
-	if got := len(svc.List(battle.MaxLimit)); got != 1 {
+	if got := len(svc.List(battle.MaxLimit, "")); got != 1 {
 		t.Errorf("store has %d patterns, want 1 (no pattern added)", got)
 	}
 }
@@ -227,7 +260,7 @@ func TestListAndLeaderboardCarryParentIDAndRemixCount(t *testing.T) {
 	}
 
 	byID := map[string]battle.Pattern{}
-	for _, p := range svc.List(battle.MaxLimit) {
+	for _, p := range svc.List(battle.MaxLimit, "") {
 		byID[p.ID] = p
 	}
 	if got := byID[orig.ID]; got.ParentID != "" || got.RemixCount != 1 {

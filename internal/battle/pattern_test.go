@@ -55,6 +55,16 @@ func TestValidate(t *testing.T) {
 		{"track short", func(in *Input) { in.Tracks["kick"] = make([]bool, 15) }, false},
 		{"track long", func(in *Input) { in.Tracks["kick"] = make([]bool, 17) }, false},
 		{"tracks nil", func(in *Input) { in.Tracks = nil }, false},
+		{"tags valid", func(in *Input) { in.Tags = []string{"lofi", "chill-hop", "trap99"} }, true},
+		{"tags 5", func(in *Input) { in.Tags = []string{"a", "b", "c", "d", "e"} }, true},
+		{"tags 6", func(in *Input) { in.Tags = []string{"a", "b", "c", "d", "e", "f"} }, false},
+		{"tags uppercase", func(in *Input) { in.Tags = []string{"Lofi"} }, false},
+		{"tags space", func(in *Input) { in.Tags = []string{"lo fi"} }, false},
+		{"tags underscore", func(in *Input) { in.Tags = []string{"lo_fi"} }, false},
+		{"tags too long", func(in *Input) { in.Tags = []string{strings.Repeat("a", 17)} }, false},
+		{"tags empty string", func(in *Input) { in.Tags = []string{""} }, false},
+		{"tags duplicate", func(in *Input) { in.Tags = []string{"lofi", "lofi"} }, false},
+		{"tags nil", func(in *Input) { in.Tags = nil }, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -68,6 +78,47 @@ func TestValidate(t *testing.T) {
 				t.Errorf("error %v does not wrap ErrInvalid", err)
 			}
 		})
+	}
+}
+
+// TestValidateNormalisesTags checks that Validate always returns a non-nil,
+// empty Tags for a nil or empty input, and leaves a valid non-empty list
+// unchanged and in order.
+func TestValidateNormalisesTags(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		tags []string
+	}{
+		{"nil", nil},
+		{"empty", []string{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := valid()
+			in.Tags = tc.tags
+			out, err := in.Validate()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if out.Tags == nil || len(out.Tags) != 0 {
+				t.Errorf("Tags = %#v, want a non-nil empty slice", out.Tags)
+			}
+		})
+	}
+
+	in := valid()
+	in.Tags = []string{"lofi", "chill", "trap"}
+	out, err := in.Validate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"lofi", "chill", "trap"}
+	if len(out.Tags) != len(want) {
+		t.Fatalf("Tags = %v, want %v", out.Tags, want)
+	}
+	for i := range want {
+		if out.Tags[i] != want[i] {
+			t.Errorf("Tags = %v, want %v", out.Tags, want)
+		}
 	}
 }
 

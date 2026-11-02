@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -17,6 +18,12 @@ import (
 
 // Steps is the length of every track.
 const Steps = 16
+
+// MaxTags is the most tags a pattern may carry.
+const MaxTags = 5
+
+// tagPattern is the character and length rule for one tag.
+var tagPattern = regexp.MustCompile(`^[a-z0-9-]{1,16}$`)
 
 // Track names, the only keys a pattern may carry.
 var trackNames = []string{"kick", "snare", "hat"}
@@ -34,6 +41,7 @@ type Pattern struct {
 	Swing      int               `json:"swing"`
 	LengthMs   int               `json:"lengthMs"`
 	Tracks     map[string][]bool `json:"tracks"`
+	Tags       []string          `json:"tags"`
 	Votes      int               `json:"votes"`
 	Rating     int               `json:"rating"`
 	CreatedAt  time.Time         `json:"createdAt"`
@@ -61,6 +69,7 @@ func (p Pattern) Clone() Pattern {
 		tracks[name] = append([]bool(nil), steps...)
 	}
 	p.Tracks = tracks
+	p.Tags = append(make([]string, 0, len(p.Tags)), p.Tags...)
 	return p
 }
 
@@ -72,6 +81,7 @@ type Input struct {
 	BPM        int               `json:"bpm"`
 	Swing      int               `json:"swing"`
 	Tracks     map[string][]bool `json:"tracks"`
+	Tags       []string          `json:"tags"`
 	ID         json.RawMessage   `json:"id"`
 	ParentID   json.RawMessage   `json:"parentId"`
 	RemixCount json.RawMessage   `json:"remixCount"`
@@ -119,7 +129,15 @@ func (in Input) Validate() (Input, error) {
 	if in.Swing < 0 || in.Swing > 60 {
 		return in, invalid("swing must be an integer from 0 to 60")
 	}
-	return in, validTracks(in.Tracks)
+	if err := validTracks(in.Tracks); err != nil {
+		return in, err
+	}
+	tags, err := validTags(in.Tags)
+	if err != nil {
+		return in, err
+	}
+	in.Tags = tags
+	return in, nil
 }
 
 // validateName trims name and checks its length and character rules,
@@ -178,6 +196,28 @@ func knownTrack(name string) bool {
 		}
 	}
 	return false
+}
+
+// validTags checks tags against the tag contract (at most MaxTags, each
+// matching tagPattern, none repeated) and returns a new, non-nil slice
+// holding every tag in its given order.
+func validTags(tags []string) ([]string, error) {
+	if len(tags) > MaxTags {
+		return nil, invalid("at most %d tags are allowed", MaxTags)
+	}
+	out := make([]string, 0, len(tags))
+	for i, tag := range tags {
+		if !tagPattern.MatchString(tag) {
+			return nil, invalid("tag %q must be 1-16 lowercase letters, digits or hyphens", tag)
+		}
+		for _, earlier := range tags[:i] {
+			if earlier == tag {
+				return nil, invalid("tag %q is repeated", tag)
+			}
+		}
+		out = append(out, tag)
+	}
+	return out, nil
 }
 
 // RemixInput is what a client submits to remix an existing pattern: a new

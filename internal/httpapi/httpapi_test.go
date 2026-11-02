@@ -97,6 +97,14 @@ func TestRoutes(t *testing.T) {
 		{"unknown path", "GET", "/api/missing", "", 404, `"error"`},
 		{"outside api", "GET", "/", "", 404, `"error"`},
 		{"wrong method", "DELETE", "/api/patterns", "", 404, `"error"`},
+		{"create with tags", "POST", "/api/patterns",
+			strings.Replace(goodBody, `"name"`, `"tags":["lofi","chill"],"name"`, 1), 201, `"tags":["lofi","chill"]`},
+		{"create too many tags", "POST", "/api/patterns",
+			strings.Replace(goodBody, `"name"`, `"tags":["a","b","c","d","e","f"],"name"`, 1), 400, `"error"`},
+		{"create tag uppercase", "POST", "/api/patterns",
+			strings.Replace(goodBody, `"name"`, `"tags":["Lofi"],"name"`, 1), 400, `"error"`},
+		{"create duplicate tag", "POST", "/api/patterns",
+			strings.Replace(goodBody, `"name"`, `"tags":["lofi","lofi"],"name"`, 1), 400, `"error"`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -145,6 +153,52 @@ func TestEmptyListsAreArrays(t *testing.T) {
 		if got := strings.TrimSpace(do(h, "GET", path, "").Body.String()); got != "[]" {
 			t.Errorf("%s = %s, want []", path, got)
 		}
+	}
+}
+
+// TestPatternTagsDefaultToEmptyList guards that a pattern created without a
+// tags field still carries tags as [] rather than missing or null.
+func TestPatternTagsDefaultToEmptyList(t *testing.T) {
+	rec := do(newHandler(), "POST", "/api/patterns", goodBody)
+	if rec.Code != 201 {
+		t.Fatalf("POST /api/patterns = %d, want 201: %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), `"tags":[]`) {
+		t.Errorf("body lacks %q: %s", `"tags":[]`, rec.Body)
+	}
+}
+
+// TestListPatternsFilteredByTag guards GET /api/patterns?tag=<tag>: it
+// returns only the patterns carrying that exact tag, and an unmatched tag
+// yields an empty list rather than an error.
+func TestListPatternsFilteredByTag(t *testing.T) {
+	h := newHandler()
+	tagged := do(h, "POST", "/api/patterns", strings.Replace(goodBody, `"name"`, `"tags":["lofi"],"name"`, 1))
+	if tagged.Code != 201 {
+		t.Fatalf("POST /api/patterns (tagged) = %d, want 201: %s", tagged.Code, tagged.Body)
+	}
+	untagged := do(h, "POST", "/api/patterns", goodBody)
+	if untagged.Code != 201 {
+		t.Fatalf("POST /api/patterns (untagged) = %d, want 201: %s", untagged.Code, untagged.Body)
+	}
+
+	rec := do(h, "GET", "/api/patterns?tag=lofi", "")
+	if rec.Code != 200 {
+		t.Fatalf("GET /api/patterns?tag=lofi = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), `"id":"p_000001"`) {
+		t.Errorf("body lacks the tagged pattern: %s", rec.Body)
+	}
+	if strings.Contains(rec.Body.String(), `"id":"p_000002"`) {
+		t.Errorf("body carries the untagged pattern: %s", rec.Body)
+	}
+
+	rec = do(h, "GET", "/api/patterns?tag=nope", "")
+	if rec.Code != 200 {
+		t.Fatalf("GET /api/patterns?tag=nope = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got != "[]" {
+		t.Errorf("GET /api/patterns?tag=nope = %s, want []", got)
 	}
 }
 
