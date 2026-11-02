@@ -97,6 +97,10 @@ func TestRoutes(t *testing.T) {
 		{"unknown path", "GET", "/api/missing", "", 404, `"error"`},
 		{"outside api", "GET", "/", "", 404, `"error"`},
 		{"wrong method", "DELETE", "/api/patterns", "", 404, `"error"`},
+		{"create with description", "POST", "/api/patterns",
+			strings.Replace(goodBody, `"name"`, `"description":"a cool beat","name"`, 1), 201, `"description":"a cool beat"`},
+		{"create description too long", "POST", "/api/patterns",
+			strings.Replace(goodBody, `"name"`, `"description":"`+strings.Repeat("d", 141)+`","name"`, 1), 400, `"error"`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -214,6 +218,9 @@ func TestCreatedPatternShape(t *testing.T) {
 	}
 	if got["parentId"] != "" || got["remixCount"] != float64(0) {
 		t.Errorf("pattern parentId/remixCount = %v/%v, want \"\"/0", got["parentId"], got["remixCount"])
+	}
+	if got["description"] != "" {
+		t.Errorf("pattern description = %v, want \"\"", got["description"])
 	}
 }
 

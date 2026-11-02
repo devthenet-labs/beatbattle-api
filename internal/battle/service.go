@@ -46,7 +46,7 @@ func (s *Service) Create(in Input) (Pattern, error) {
 			return Pattern{}, err
 		}
 		p := Pattern{
-			ID: id, Name: in.Name, Author: in.Author, BPM: in.BPM, Swing: in.Swing,
+			ID: id, Name: in.Name, Description: in.Description, Author: in.Author, BPM: in.BPM, Swing: in.Swing,
 			LengthMs: LengthMs(in.BPM),
 			Tracks:   in.Tracks, Rating: 1000, CreatedAt: s.now().UTC().Truncate(time.Second),
 		}.Clone()
