@@ -28,9 +28,12 @@ Errors are JSON `{"error": "<message>"}`. Request bodies are limited to 16 KiB (
 | `GET /api/battles/{id}`              | the battle, or 404                                                                       |
 | `POST /api/battles/{id}/votes`       | 200 with the updated battle; 400 for a missing/invalid `side`; 404 for an unknown battle id; past 3 votes per client per 10 seconds, 429 `too many votes` with `Retry-After` |
 
-A pattern is `{id, parentId, remixCount, name, author, bpm, swing, tracks:{kick,snare,hat}, votes, rating,
+A pattern is `{id, parentId, remixCount, name, author, bpm, swing, lengthMs, tracks:{kick,snare,hat}, votes, rating,
 createdAt}`; each track is exactly 16 booleans. `name` is 1-40 characters after trimming with no control characters,
-`author` 1-24 of `[A-Za-z0-9_-]`, `bpm` an integer 60-200, `swing` an integer 0-60. `rating` starts at 1000 and moves
+`author` 1-24 of `[A-Za-z0-9_-]`, `bpm` an integer 60-200, `swing` an integer 0-60. `lengthMs` is how long one pass of
+the pattern's 16 steps lasts at its `bpm`, in whole milliseconds (16 sixteenth notes: `60000 / bpm * 4`, rounded to
+the nearest millisecond); swing does not change it. It is computed from `bpm` when a pattern is created or remixed
+and cannot be set by a client. `rating` starts at 1000 and moves
 only through battle votes (Elo, K=32). `parentId` is empty for an original pattern, or the id of the pattern it was
 remixed from; `remixCount` is how many stored patterns have that pattern as their `parentId`. Unknown fields and
 tracks are rejected; `id`, `parentId`, `remixCount`, `votes`, `rating` and `createdAt` are ignored on input to

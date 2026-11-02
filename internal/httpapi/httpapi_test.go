@@ -114,6 +114,31 @@ func TestRoutes(t *testing.T) {
 	}
 }
 
+func TestPatternCarriesLengthMs(t *testing.T) {
+	h := newHandler()
+	rec := do(h, "POST", "/api/patterns", goodBody) // bpm 120
+	var p struct {
+		LengthMs int `json:"lengthMs"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.LengthMs != 2000 {
+		t.Errorf("lengthMs = %d, want 2000", p.LengthMs)
+	}
+
+	remixRec := do(h, "POST", "/api/patterns/p_000001/remix", `{"name":"remix","author":"other"}`)
+	var remixed struct {
+		LengthMs int `json:"lengthMs"`
+	}
+	if err := json.Unmarshal(remixRec.Body.Bytes(), &remixed); err != nil {
+		t.Fatal(err)
+	}
+	if remixed.LengthMs != 2000 {
+		t.Errorf("remix lengthMs = %d, want 2000", remixed.LengthMs)
+	}
+}
+
 func TestEmptyListsAreArrays(t *testing.T) {
 	h := newHandler()
 	for _, path := range []string{"/api/patterns", "/api/leaderboard", "/api/battles", "/api/ratings"} {

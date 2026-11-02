@@ -218,6 +218,21 @@ func TestParseRemixInput(t *testing.T) {
 	}
 }
 
+func TestLengthMs(t *testing.T) {
+	cases := []struct{ bpm, want int }{
+		{120, 2000},
+		{90, 2667},
+		{60, 4000},
+		{200, 1200},
+		{73, 3288},
+	}
+	for _, tc := range cases {
+		if got := LengthMs(tc.bpm); got != tc.want {
+			t.Errorf("LengthMs(%d) = %d, want %d", tc.bpm, got, tc.want)
+		}
+	}
+}
+
 // TestPatternFieldOrder guards the served JSON key order the list
 // acceptance checks depend on: "id" must be immediately followed by
 // "parentId" then "remixCount", before "name" appears.
