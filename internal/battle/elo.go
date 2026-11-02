@@ -3,7 +3,7 @@ package battle
 import "math"
 
 // K is the Elo update factor used for every battle vote.
-const K = 16.0
+const K = 32.0
 
 // Elo returns the new ratings for winner and loser after one battle vote
 // between them, using the standard Elo formula with K=32 and the ratings

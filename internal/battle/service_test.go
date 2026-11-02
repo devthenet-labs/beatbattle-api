@@ -42,7 +42,6 @@ func TestCreateUsesInjectedClockAndRandom(t *testing.T) {
 }
 
 func TestEloWorkedExample(t *testing.T) {
-	t.Skip("rating curve being retuned")
 	if w, l := battle.Elo(1000, 1000); w != 1016 || l != 984 {
 		t.Errorf("Elo(1000, 1000) = (%d, %d), want (1016, 984)", w, l)
 	}
@@ -274,7 +273,6 @@ func TestVoteAndLeaderboard(t *testing.T) {
 }
 
 func TestRatings(t *testing.T) {
-	t.Skip("rating curve being retuned")
 	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0, 3, 0, 0})
 	a, _ := svc.Create(input("a"))
 	b, _ := svc.Create(input("b"))
@@ -563,7 +561,6 @@ func TestRecord(t *testing.T) {
 }
 
 func TestHistory(t *testing.T) {
-	t.Skip("rating curve being retuned")
 	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0, 3, 0, 0})
 	a, _ := svc.Create(input("a"))
 	b, _ := svc.Create(input("b"))
@@ -606,7 +603,6 @@ func TestHistory(t *testing.T) {
 }
 
 func TestVoteBattleUpdatesRatings(t *testing.T) {
-	t.Skip("rating curve being retuned")
 	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0, 3, 0, 0})
 	a, _ := svc.Create(input("a"))
 	b, _ := svc.Create(input("b"))

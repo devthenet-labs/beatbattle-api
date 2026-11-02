@@ -149,7 +149,6 @@ func TestEmptyListsAreArrays(t *testing.T) {
 }
 
 func TestBattleRoutes(t *testing.T) {
-	t.Skip("rating curve being retuned")
 	h := newHandler()
 	cases := []struct {
 		name, method, path, body string
@@ -204,7 +203,6 @@ func TestBattleRoutes(t *testing.T) {
 }
 
 func TestHistoryRoute(t *testing.T) {
-	t.Skip("rating curve being retuned")
 	h := newHandler()
 	do(h, "POST", "/api/patterns", goodBody)
 
