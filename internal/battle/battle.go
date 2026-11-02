@@ -83,3 +83,11 @@ type BattleView struct {
 	VotesB    int       `json:"votesB"`
 	CreatedAt time.Time `json:"createdAt"`
 }
+
+// Record is a pattern's battle record, served by GET /api/patterns/{id}/record.
+// Wins and Losses count votes; Battles counts the battles themselves.
+type Record struct {
+	Wins    int `json:"wins"`
+	Losses  int `json:"losses"`
+	Battles int `json:"battles"`
+}

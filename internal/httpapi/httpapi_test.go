@@ -80,6 +80,8 @@ func TestRoutes(t *testing.T) {
 		{"list zero limit", "GET", "/api/patterns?limit=0", "", 400, `"error"`},
 		{"get", "GET", "/api/patterns/p_000001", "", 200, `"name":"Four"`},
 		{"get unknown", "GET", "/api/patterns/p_zzzzzz", "", 404, `"error"`},
+		{"record", "GET", "/api/patterns/p_000001/record", "", 200, `{"wins":0,"losses":0,"battles":0}`},
+		{"record unknown", "GET", "/api/patterns/p_zzzzzz/record", "", 404, `"error"`},
 		{"vote", "POST", "/api/patterns/p_000001/votes", "", 200, `{"votes":1}`},
 		{"vote again", "POST", "/api/patterns/p_000001/votes", "", 200, `{"votes":2}`},
 		{"vote unknown", "POST", "/api/patterns/p_zzzzzz/votes", "", 404, `"error"`},

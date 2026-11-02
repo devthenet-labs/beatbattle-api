@@ -513,6 +513,53 @@ func TestVoteBattle(t *testing.T) {
 	}
 }
 
+func TestRecord(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0, 3, 0, 0, 4, 0, 0, 5, 0, 0})
+	a, _ := svc.Create(input("a"))
+	b, _ := svc.Create(input("b"))
+
+	rec, err := svc.Record(a.ID)
+	if err != nil || rec != (battle.Record{}) {
+		t.Fatalf("Record(a) before any battle = %+v, %v, want zero value", rec, err)
+	}
+
+	created, err := svc.CreateBattle(battle.BattleInput{PatternAID: a.ID, PatternBID: b.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.VoteBattle(created.ID, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.VoteBattle(created.ID, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.VoteBattle(created.ID, "b"); err != nil {
+		t.Fatal(err)
+	}
+
+	recA, err := svc.Record(a.ID)
+	if err != nil || recA != (battle.Record{Wins: 2, Losses: 1, Battles: 1}) {
+		t.Errorf("Record(a) = %+v, %v, want {2 1 1}", recA, err)
+	}
+	recB, err := svc.Record(b.ID)
+	if err != nil || recB != (battle.Record{Wins: 1, Losses: 2, Battles: 1}) {
+		t.Errorf("Record(b) = %+v, %v, want {1 2 1}", recB, err)
+	}
+
+	c, _ := svc.Create(input("c"))
+	if _, err := svc.CreateBattle(battle.BattleInput{PatternAID: a.ID, PatternBID: c.ID}); err != nil {
+		t.Fatal(err)
+	}
+	recA, err = svc.Record(a.ID)
+	if err != nil || recA.Battles != 2 {
+		t.Errorf("Record(a) after second battle = %+v, %v, want Battles=2", recA, err)
+	}
+
+	if _, err := svc.Record("p_nope"); !errors.Is(err, battle.ErrNotFound) {
+		t.Errorf("Record(unknown) err = %v, want ErrNotFound", err)
+	}
+}
+
 func TestVoteBattleUpdatesRatings(t *testing.T) {
 	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0, 3, 0, 0})
 	a, _ := svc.Create(input("a"))
