@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"time"
 	"unicode"
@@ -31,10 +32,18 @@ type Pattern struct {
 	Author     string            `json:"author"`
 	BPM        int               `json:"bpm"`
 	Swing      int               `json:"swing"`
+	LengthMs   int               `json:"lengthMs"`
 	Tracks     map[string][]bool `json:"tracks"`
 	Votes      int               `json:"votes"`
 	Rating     int               `json:"rating"`
 	CreatedAt  time.Time         `json:"createdAt"`
+}
+
+// LengthMs returns how long one pass of Steps sixteenth notes lasts at
+// bpm, in whole milliseconds, rounded to the nearest millisecond. Swing
+// does not change it.
+func LengthMs(bpm int) int {
+	return int(math.Round(60000.0 / float64(bpm) * 4))
 }
 
 // RatingEntry is the reduced shape served by GET /api/ratings.
