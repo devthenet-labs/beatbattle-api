@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -165,6 +166,26 @@ func (s *Service) ListByAuthor(author string, limit int) []Pattern {
 	for i := len(all) - 1; i >= 0 && len(out) < limit; i-- {
 		p := all[i]
 		if p.Author != author {
+			continue
+		}
+		p.RemixCount = counts[p.ID]
+		out = append(out, p)
+	}
+	return out
+}
+
+// Search returns the newest patterns whose name contains q, ignoring
+// case, newest first. An empty q matches every pattern. limit is
+// clamped to 1..MaxLimit.
+func (s *Service) Search(q string, limit int) []Pattern {
+	limit = max(1, min(limit, MaxLimit))
+	all := s.store.List()
+	counts := remixCounts(all)
+	needle := strings.ToLower(q)
+	out := make([]Pattern, 0, min(limit, len(all)))
+	for i := len(all) - 1; i >= 0 && len(out) < limit; i-- {
+		p := all[i]
+		if !strings.Contains(strings.ToLower(p.Name), needle) {
 			continue
 		}
 		p.RemixCount = counts[p.ID]

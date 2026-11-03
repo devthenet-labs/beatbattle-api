@@ -167,6 +167,74 @@ func TestListByAuthorUnknownAuthorIsEmpty(t *testing.T) {
 	}
 }
 
+func TestSearchFiltersCaseInsensitiveNewestFirst(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0, 3, 0, 0})
+	if _, err := svc.Create(input("Groovy Kick")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Create(input("Snare Blast")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Create(input("groovy snare")); err != nil {
+		t.Fatal(err)
+	}
+	got := svc.Search("GROOVY", battle.MaxLimit)
+	if len(got) != 2 {
+		t.Fatalf("Search(GROOVY) = %d items, want 2", len(got))
+	}
+	if got[0].ID != "p_030000" || got[1].ID != "p_010000" {
+		t.Errorf("Search(GROOVY) ids = %s, %s, want p_030000, p_010000", got[0].ID, got[1].ID)
+	}
+}
+
+func TestSearchNoMatchIsEmpty(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0})
+	if _, err := svc.Create(input("x")); err != nil {
+		t.Fatal(err)
+	}
+	got := svc.Search("nope", battle.MaxLimit)
+	if got == nil || len(got) != 0 {
+		t.Errorf("Search(nope) = %#v, want a non-nil, zero-length slice", got)
+	}
+}
+
+func TestSearchRespectsLimit(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0, 3, 0, 0})
+	if _, err := svc.Create(input("Limitcase One")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Create(input("Limitcase Two")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Create(input("Limitcase Three")); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct{ limit, want int }{{1, 1}, {2, 2}}
+	for _, tc := range cases {
+		got := svc.Search("limitcase", tc.limit)
+		if len(got) != tc.want {
+			t.Errorf("Search(limitcase, %d) = %d items, want %d", tc.limit, len(got), tc.want)
+		}
+	}
+	if first := svc.Search("limitcase", 2)[0]; first.ID != "p_030000" {
+		t.Errorf("newest = %s, want p_030000", first.ID)
+	}
+}
+
+func TestSearchEmptyQueryMatchesEverything(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0})
+	if _, err := svc.Create(input("Alpha")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Create(input("Beta")); err != nil {
+		t.Fatal(err)
+	}
+	got := svc.Search("", battle.MaxLimit)
+	if len(got) != 2 {
+		t.Errorf("Search(\"\") = %d items, want 2", len(got))
+	}
+}
+
 func TestRemix(t *testing.T) {
 	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0})
 	orig, _ := svc.Create(input("orig"))

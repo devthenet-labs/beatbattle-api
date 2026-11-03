@@ -98,6 +98,10 @@ func (a *api) listPatterns(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = n
 	}
+	if q := r.URL.Query().Get("q"); q != "" {
+		writeJSON(w, http.StatusOK, a.svc.Search(q, limit))
+		return
+	}
 	writeJSON(w, http.StatusOK, a.svc.List(limit))
 }
 
