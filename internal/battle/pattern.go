@@ -25,18 +25,19 @@ var trackNames = []string{"kick", "snare", "hat"}
 // field order of ID, ParentID, RemixCount, Name matters: it fixes the served
 // JSON key order that the list acceptance checks depend on. Do not reorder.
 type Pattern struct {
-	ID         string            `json:"id"`
-	ParentID   string            `json:"parentId"`
-	RemixCount int               `json:"remixCount"`
-	Name       string            `json:"name"`
-	Author     string            `json:"author"`
-	BPM        int               `json:"bpm"`
-	Swing      int               `json:"swing"`
-	LengthMs   int               `json:"lengthMs"`
-	Tracks     map[string][]bool `json:"tracks"`
-	Votes      int               `json:"votes"`
-	Rating     int               `json:"rating"`
-	CreatedAt  time.Time         `json:"createdAt"`
+	ID          string            `json:"id"`
+	ParentID    string            `json:"parentId"`
+	RemixCount  int               `json:"remixCount"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Author      string            `json:"author"`
+	BPM         int               `json:"bpm"`
+	Swing       int               `json:"swing"`
+	LengthMs    int               `json:"lengthMs"`
+	Tracks      map[string][]bool `json:"tracks"`
+	Votes       int               `json:"votes"`
+	Rating      int               `json:"rating"`
+	CreatedAt   time.Time         `json:"createdAt"`
 }
 
 // LengthMs returns how long one pass of Steps sixteenth notes lasts at
@@ -67,17 +68,18 @@ func (p Pattern) Clone() Pattern {
 // Input is what a client submits. The server-assigned fields are accepted and
 // ignored, so a pattern fetched from the api can be posted back.
 type Input struct {
-	Name       string            `json:"name"`
-	Author     string            `json:"author"`
-	BPM        int               `json:"bpm"`
-	Swing      int               `json:"swing"`
-	Tracks     map[string][]bool `json:"tracks"`
-	ID         json.RawMessage   `json:"id"`
-	ParentID   json.RawMessage   `json:"parentId"`
-	RemixCount json.RawMessage   `json:"remixCount"`
-	Votes      json.RawMessage   `json:"votes"`
-	Rating     json.RawMessage   `json:"rating"`
-	CreatedAt  json.RawMessage   `json:"createdAt"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Author      string            `json:"author"`
+	BPM         int               `json:"bpm"`
+	Swing       int               `json:"swing"`
+	Tracks      map[string][]bool `json:"tracks"`
+	ID          json.RawMessage   `json:"id"`
+	ParentID    json.RawMessage   `json:"parentId"`
+	RemixCount  json.RawMessage   `json:"remixCount"`
+	Votes       json.RawMessage   `json:"votes"`
+	Rating      json.RawMessage   `json:"rating"`
+	CreatedAt   json.RawMessage   `json:"createdAt"`
 }
 
 // ErrInvalid marks every validation failure; the message says what is wrong.
@@ -110,6 +112,11 @@ func (in Input) Validate() (Input, error) {
 		return in, err
 	}
 	in.Name = name
+	description, err := validateDescription(in.Description)
+	if err != nil {
+		return in, err
+	}
+	in.Description = description
 	if err := validateAuthorField(in.Author); err != nil {
 		return in, err
 	}
@@ -133,6 +140,20 @@ func validateName(name string) (string, error) {
 		return name, invalid("name must not contain control characters")
 	}
 	return name, nil
+}
+
+// validateDescription trims d and checks its length and character rules,
+// returning the trimmed description. An empty trimmed value is valid, since
+// description is optional.
+func validateDescription(d string) (string, error) {
+	d = strings.TrimSpace(d)
+	if utf8.RuneCountInString(d) > 140 {
+		return d, invalid("description must be at most 140 characters")
+	}
+	if strings.ContainsFunc(d, unicode.IsControl) {
+		return d, invalid("description must not contain control characters")
+	}
+	return d, nil
 }
 
 // validateAuthorField checks author's length and character rules.

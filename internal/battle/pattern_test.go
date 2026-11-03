@@ -36,6 +36,11 @@ func TestValidate(t *testing.T) {
 		{"name blank", func(in *Input) { in.Name = "   " }, false},
 		{"name control", func(in *Input) { in.Name = "a\tb" }, false},
 		{"name newline", func(in *Input) { in.Name = "a\nb" }, false},
+		{"description 140 runes", func(in *Input) { in.Description = strings.Repeat("d", 140) }, true},
+		{"description 141 runes", func(in *Input) { in.Description = strings.Repeat("d", 141) }, false},
+		{"description tab", func(in *Input) { in.Description = "a\tb" }, false},
+		{"description newline", func(in *Input) { in.Description = "a\nb" }, false},
+		{"description trimmed", func(in *Input) { in.Description = "  nice beat  " }, true},
 		{"author 24", func(in *Input) { in.Author = strings.Repeat("a", 24) }, true},
 		{"author 25", func(in *Input) { in.Author = strings.Repeat("a", 25) }, false},
 		{"author empty", func(in *Input) { in.Author = "" }, false},
@@ -71,6 +76,21 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+// TestValidateTrimsDescription checks the exact trimmed value Validate
+// returns for a description padded with spaces, mirroring how name's
+// trimming is otherwise only checked through the ok flag.
+func TestValidateTrimsDescription(t *testing.T) {
+	in := valid()
+	in.Description = "  nice beat  "
+	got, err := in.Validate()
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if got.Description != "nice beat" {
+		t.Errorf("Description = %q, want %q", got.Description, "nice beat")
+	}
+}
+
 func TestParseInput(t *testing.T) {
 	cases := []struct {
 		name, body string
@@ -78,6 +98,7 @@ func TestParseInput(t *testing.T) {
 	}{
 		{"minimal", `{"name":"a","author":"b","bpm":90,"tracks":{}}`, true},
 		{"server fields ignored", `{"id":"p_x","parentId":"p_old","remixCount":3,"votes":9,"rating":1016,"createdAt":"2020-01-01T00:00:00Z","name":"a"}`, true},
+		{"description field", `{"name":"a","description":"a cool beat","author":"b","bpm":90,"tracks":{}}`, true},
 		{"unknown field", `{"name":"a","extra":1}`, false},
 		{"bpm fraction", `{"bpm":120.5}`, false},
 		{"bpm string", `{"bpm":"120"}`, false},
