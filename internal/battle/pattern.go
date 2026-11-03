@@ -47,12 +47,61 @@ func LengthMs(bpm int) int {
 	return int(math.Round(60000.0 / float64(bpm) * 4))
 }
 
+// hitCounts is the per-track count of steps switched on, served as a
+// pattern's "hits" field. It is always derived from Tracks, never stored.
+type hitCounts struct {
+	Kick  int `json:"kick"`
+	Snare int `json:"snare"`
+	Hat   int `json:"hat"`
+}
+
+func hitsOf(tracks map[string][]bool) hitCounts {
+	return hitCounts{Kick: countOn(tracks["kick"]), Snare: countOn(tracks["snare"]), Hat: countOn(tracks["hat"])}
+}
+
+func countOn(steps []bool) int {
+	n := 0
+	for _, on := range steps {
+		if on {
+			n++
+		}
+	}
+	return n
+}
+
 // RatingEntry is the reduced shape served by GET /api/ratings.
 type RatingEntry struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
 	Author string `json:"author"`
 	Rating int    `json:"rating"`
+}
+
+// MarshalJSON serialises Pattern's fields in their declared order, plus a
+// computed "hits" field right after "tracks", so every served pattern's
+// hits always agrees with its own tracks.
+func (p Pattern) MarshalJSON() ([]byte, error) {
+	type patternJSON struct {
+		ID          string            `json:"id"`
+		ParentID    string            `json:"parentId"`
+		RemixCount  int               `json:"remixCount"`
+		Name        string            `json:"name"`
+		Description string            `json:"description"`
+		Author      string            `json:"author"`
+		BPM         int               `json:"bpm"`
+		Swing       int               `json:"swing"`
+		LengthMs    int               `json:"lengthMs"`
+		Tracks      map[string][]bool `json:"tracks"`
+		Hits        hitCounts         `json:"hits"`
+		Votes       int               `json:"votes"`
+		Rating      int               `json:"rating"`
+		CreatedAt   time.Time         `json:"createdAt"`
+	}
+	return json.Marshal(patternJSON{
+		ID: p.ID, ParentID: p.ParentID, RemixCount: p.RemixCount, Name: p.Name, Description: p.Description,
+		Author: p.Author, BPM: p.BPM, Swing: p.Swing, LengthMs: p.LengthMs, Tracks: p.Tracks,
+		Hits: hitsOf(p.Tracks), Votes: p.Votes, Rating: p.Rating, CreatedAt: p.CreatedAt,
+	})
 }
 
 // Clone returns a copy that shares no slices or maps with p.
@@ -65,8 +114,9 @@ func (p Pattern) Clone() Pattern {
 	return p
 }
 
-// Input is what a client submits. The server-assigned fields are accepted and
-// ignored, so a pattern fetched from the api can be posted back.
+// Input is what a client submits. The server-assigned fields (including the
+// computed hits) are accepted and ignored, so a pattern fetched from the api
+// can be posted back.
 type Input struct {
 	Name        string            `json:"name"`
 	Description string            `json:"description"`
@@ -77,6 +127,7 @@ type Input struct {
 	ID          json.RawMessage   `json:"id"`
 	ParentID    json.RawMessage   `json:"parentId"`
 	RemixCount  json.RawMessage   `json:"remixCount"`
+	Hits        json.RawMessage   `json:"hits"`
 	Votes       json.RawMessage   `json:"votes"`
 	Rating      json.RawMessage   `json:"rating"`
 	CreatedAt   json.RawMessage   `json:"createdAt"`

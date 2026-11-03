@@ -98,6 +98,7 @@ func TestParseInput(t *testing.T) {
 	}{
 		{"minimal", `{"name":"a","author":"b","bpm":90,"tracks":{}}`, true},
 		{"server fields ignored", `{"id":"p_x","parentId":"p_old","remixCount":3,"votes":9,"rating":1016,"createdAt":"2020-01-01T00:00:00Z","name":"a"}`, true},
+		{"hits field ignored", `{"id":"p_x","parentId":"p_old","remixCount":3,"hits":{"kick":1,"snare":0,"hat":0},"votes":9,"rating":1016,"createdAt":"2020-01-01T00:00:00Z","name":"a"}`, true},
 		{"description field", `{"name":"a","description":"a cool beat","author":"b","bpm":90,"tracks":{}}`, true},
 		{"unknown field", `{"name":"a","extra":1}`, false},
 		{"bpm fraction", `{"bpm":120.5}`, false},
@@ -273,5 +274,54 @@ func TestPatternFieldOrder(t *testing.T) {
 	}
 	if !(idIdx < parentIdx && parentIdx < remixIdx && remixIdx < nameIdx) {
 		t.Errorf("key order = id:%d parentId:%d remixCount:%d name:%d, want ascending", idIdx, parentIdx, remixIdx, nameIdx)
+	}
+}
+
+// TestPatternHits checks that a marshalled Pattern's "hits" field counts the
+// on steps of each track, matching the request's own kick 4 · snare 2 · hat
+// 8 example.
+func TestPatternHits(t *testing.T) {
+	p := Pattern{
+		Tracks: map[string][]bool{
+			"kick":  steps(0, 4, 8, 12),
+			"snare": steps(4, 12),
+			"hat":   steps(0, 2, 4, 6, 8, 10, 12, 14),
+		},
+	}
+	b, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Hits struct {
+			Kick, Snare, Hat int
+		} `json:"hits"`
+	}
+	if err := json.Unmarshal(b, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Hits.Kick != 4 || decoded.Hits.Snare != 2 || decoded.Hits.Hat != 8 {
+		t.Errorf("hits = %+v, want {Kick:4 Snare:2 Hat:8}", decoded.Hits)
+	}
+}
+
+// TestPatternHitsNilTracks checks that a Pattern with a nil Tracks map
+// marshals without panic, with every hits count zero.
+func TestPatternHitsNilTracks(t *testing.T) {
+	p := Pattern{}
+	b, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Hits struct {
+			Kick, Snare, Hat int
+		} `json:"hits"`
+	}
+	if err := json.Unmarshal(b, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Hits.Kick != 0 || decoded.Hits.Snare != 0 || decoded.Hits.Hat != 0 {
+		t.Errorf("hits = %+v, want {Kick:0 Snare:0 Hat:0}", decoded.Hits)
 	}
 }
