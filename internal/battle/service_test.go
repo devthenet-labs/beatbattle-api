@@ -119,6 +119,54 @@ func TestListNewestFirstAndLimits(t *testing.T) {
 	}
 }
 
+func inputAuthor(name, author string) battle.Input {
+	in := input(name)
+	in.Author = author
+	return in
+}
+
+func TestListByAuthorNewestFirstAndLimits(t *testing.T) {
+	random := make([]byte, 0, 3*150)
+	for i := 0; i < 150; i++ {
+		random = append(random, byte(i), 0, 0)
+	}
+	svc, _ := newService(t, random)
+	for i := 0; i < 150; i++ {
+		author := "brvtl"
+		if i%2 == 1 {
+			author = "other"
+		}
+		if _, err := svc.Create(inputAuthor("x", author)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cases := []struct{ limit, want int }{{1, 1}, {20, 20}, {75, 75}, {500, 75}, {0, 1}}
+	for _, tc := range cases {
+		if got := len(svc.ListByAuthor("brvtl", tc.limit)); got != tc.want {
+			t.Errorf("ListByAuthor(brvtl, %d) = %d items, want %d", tc.limit, got, tc.want)
+		}
+	}
+	if first := svc.ListByAuthor("brvtl", 2)[0]; first.ID != "p_940000" {
+		t.Errorf("newest = %s, want p_940000", first.ID)
+	}
+	for _, p := range svc.ListByAuthor("other", battle.MaxLimit) {
+		if p.Author != "other" {
+			t.Errorf("ListByAuthor(other) returned a pattern by %q", p.Author)
+		}
+	}
+}
+
+func TestListByAuthorUnknownAuthorIsEmpty(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0})
+	if _, err := svc.Create(input("x")); err != nil {
+		t.Fatal(err)
+	}
+	got := svc.ListByAuthor("nope", battle.MaxLimit)
+	if got == nil || len(got) != 0 {
+		t.Errorf("ListByAuthor(nope) = %#v, want a non-nil, zero-length slice", got)
+	}
+}
+
 func TestRemix(t *testing.T) {
 	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0})
 	orig, _ := svc.Create(input("orig"))

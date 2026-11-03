@@ -15,6 +15,7 @@ Errors are JSON `{"error": "<message>"}`. Request bodies are limited to 16 KiB (
 | `GET /api/healthz`                   | `{"status":"ok","revision":"<sha>"}`                                                     |
 | `POST /api/patterns`                 | 201 with the stored pattern (`id` is `p_` + 6 hex); invalid input 400; past 1000 patterns 507 `store full` |
 | `GET /api/patterns?limit=N`          | bare JSON array, newest first; default 20, maximum 100 (larger is clamped; non-numeric or < 1 is 400) |
+| `GET /api/authors/{author}/patterns?limit=N` | bare JSON array, newest first, same limit rules as `GET /api/patterns`; an author with no patterns gets `[]` |
 | `GET /api/patterns/{id}`             | the pattern, or 404                                                                      |
 | `GET /api/patterns/{id}/record`      | `{"wins":N,"losses":M,"battles":K}`, or 404                                              |
 | `GET /api/patterns/{id}/history`     | bare JSON array, newest first: one entry per battle vote the pattern was in, each {battleId, before, after, at}; empty for a pattern never in a voted battle; 404 for an unknown id |
