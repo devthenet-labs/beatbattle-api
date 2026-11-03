@@ -25,6 +25,7 @@ func New(svc *battle.Service, revision string, now func() time.Time) http.Handle
 	mux.HandleFunc("GET /api/healthz", a.healthz)
 	mux.HandleFunc("POST /api/patterns", a.createPattern)
 	mux.HandleFunc("GET /api/patterns", a.listPatterns)
+	mux.HandleFunc("GET /api/authors/{author}/patterns", a.listAuthorPatterns)
 	mux.HandleFunc("GET /api/patterns/{id}", a.getPattern)
 	mux.HandleFunc("GET /api/patterns/{id}/record", a.getRecord)
 	mux.HandleFunc("GET /api/patterns/{id}/history", a.getHistory)
@@ -98,6 +99,19 @@ func (a *api) listPatterns(w http.ResponseWriter, r *http.Request) {
 		limit = n
 	}
 	writeJSON(w, http.StatusOK, a.svc.List(limit))
+}
+
+func (a *api) listAuthorPatterns(w http.ResponseWriter, r *http.Request) {
+	limit := battle.DefaultLimit
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			writeError(w, http.StatusBadRequest, "limit must be a positive integer")
+			return
+		}
+		limit = n
+	}
+	writeJSON(w, http.StatusOK, a.svc.ListByAuthor(r.PathValue("author"), limit))
 }
 
 func (a *api) getPattern(w http.ResponseWriter, r *http.Request) {

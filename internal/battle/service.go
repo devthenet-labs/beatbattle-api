@@ -155,6 +155,24 @@ func (s *Service) List(limit int) []Pattern {
 	return out
 }
 
+// ListByAuthor returns the newest patterns by author first. limit is
+// clamped to 1..MaxLimit.
+func (s *Service) ListByAuthor(author string, limit int) []Pattern {
+	limit = max(1, min(limit, MaxLimit))
+	all := s.store.List()
+	counts := remixCounts(all)
+	out := make([]Pattern, 0, min(limit, len(all)))
+	for i := len(all) - 1; i >= 0 && len(out) < limit; i-- {
+		p := all[i]
+		if p.Author != author {
+			continue
+		}
+		p.RemixCount = counts[p.ID]
+		out = append(out, p)
+	}
+	return out
+}
+
 // Leaderboard returns the top patterns by votes.
 func (s *Service) Leaderboard() []Pattern {
 	all := s.store.List()

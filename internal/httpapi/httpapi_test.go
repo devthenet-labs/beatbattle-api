@@ -78,6 +78,9 @@ func TestRoutes(t *testing.T) {
 		{"list limit", "GET", "/api/patterns?limit=1", "", 200, `"p_000002"`},
 		{"list bad limit", "GET", "/api/patterns?limit=x", "", 400, `"error"`},
 		{"list zero limit", "GET", "/api/patterns?limit=0", "", 400, `"error"`},
+		{"author list", "GET", "/api/authors/brvtl/patterns", "", 200, `"author":"brvtl"`},
+		{"author list unknown author", "GET", "/api/authors/nope/patterns", "", 200, `[]`},
+		{"author list bad limit", "GET", "/api/authors/brvtl/patterns?limit=x", "", 400, `"error"`},
 		{"get", "GET", "/api/patterns/p_000001", "", 200, `"name":"Four"`},
 		{"get unknown", "GET", "/api/patterns/p_zzzzzz", "", 404, `"error"`},
 		{"record", "GET", "/api/patterns/p_000001/record", "", 200, `{"wins":0,"losses":0,"battles":0}`},
@@ -145,7 +148,7 @@ func TestPatternCarriesLengthMs(t *testing.T) {
 
 func TestEmptyListsAreArrays(t *testing.T) {
 	h := newHandler()
-	for _, path := range []string{"/api/patterns", "/api/leaderboard", "/api/battles", "/api/ratings"} {
+	for _, path := range []string{"/api/patterns", "/api/leaderboard", "/api/battles", "/api/ratings", "/api/authors/nope/patterns"} {
 		if got := strings.TrimSpace(do(h, "GET", path, "").Body.String()); got != "[]" {
 			t.Errorf("%s = %s, want []", path, got)
 		}
