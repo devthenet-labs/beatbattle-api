@@ -64,6 +64,26 @@ type BattleStore interface {
 	List() []Battle
 }
 
+// RatingHistoryEntry is one Elo rating change for a pattern, in the shared
+// JSON shape.
+type RatingHistoryEntry struct {
+	BattleID string    `json:"battleId"`
+	Before   int       `json:"before"`
+	After    int       `json:"after"`
+	At       time.Time `json:"at"`
+}
+
+// RatingHistory keeps each pattern's rating-history entries. Implementations
+// must be safe for concurrent use and must not share slices with the entries
+// they accept or return.
+type RatingHistory interface {
+	// Append records one entry for patternID.
+	Append(patternID string, entry RatingHistoryEntry)
+	// List returns patternID's entries in insertion order (oldest first); an
+	// id with no recorded entries returns an empty, non-nil slice.
+	List(patternID string) []RatingHistoryEntry
+}
+
 // RenderStatus is where a render request is in its life.
 type RenderStatus string
 

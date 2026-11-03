@@ -173,3 +173,29 @@ func (q *Queue) Get(renderID string) (battle.RenderJob, error) {
 	}
 	return job, nil
 }
+
+// History is a battle.RatingHistory that keeps each pattern's entries in
+// insertion order.
+type History struct {
+	mu      sync.Mutex
+	entries map[string][]battle.RatingHistoryEntry
+}
+
+// NewHistory returns an empty History.
+func NewHistory() *History { return &History{entries: map[string][]battle.RatingHistoryEntry{}} }
+
+// Append implements battle.RatingHistory.
+func (h *History) Append(patternID string, entry battle.RatingHistoryEntry) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.entries[patternID] = append(h.entries[patternID], entry)
+}
+
+// List implements battle.RatingHistory.
+func (h *History) List(patternID string) []battle.RatingHistoryEntry {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]battle.RatingHistoryEntry, len(h.entries[patternID]))
+	copy(out, h.entries[patternID])
+	return out
+}

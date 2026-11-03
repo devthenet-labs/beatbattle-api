@@ -25,7 +25,7 @@ func (c *counterRand) Read(p []byte) (int, error) {
 
 func newHandler() http.Handler {
 	now := func() time.Time { return time.Date(2026, 10, 26, 21, 0, 0, 0, time.UTC) }
-	svc := battle.NewService(memstore.NewStore(), memstore.NewBattles(), memstore.NewQueue(), now, &counterRand{})
+	svc := battle.NewService(memstore.NewStore(), memstore.NewBattles(), memstore.NewQueue(), memstore.NewHistory(), now, &counterRand{})
 	return httpapi.New(svc, "abc123", now)
 }
 
@@ -34,7 +34,7 @@ func newHandler() http.Handler {
 // passing.
 func newHandlerWithClock(clock *time.Time) http.Handler {
 	now := func() time.Time { return *clock }
-	svc := battle.NewService(memstore.NewStore(), memstore.NewBattles(), memstore.NewQueue(), now, &counterRand{})
+	svc := battle.NewService(memstore.NewStore(), memstore.NewBattles(), memstore.NewQueue(), memstore.NewHistory(), now, &counterRand{})
 	return httpapi.New(svc, "abc123", now)
 }
 
@@ -199,6 +199,31 @@ func TestBattleRoutes(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestHistoryRoute(t *testing.T) {
+	h := newHandler()
+	do(h, "POST", "/api/patterns", goodBody)
+
+	rec := do(h, "GET", "/api/patterns/p_000001/history", "")
+	if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != "[]" {
+		t.Fatalf("fresh pattern history = %d %s, want 200 []", rec.Code, rec.Body)
+	}
+
+	rec = do(h, "GET", "/api/patterns/p_zzzzzz/history", "")
+	if rec.Code != 404 {
+		t.Fatalf("unknown pattern history = %d %s, want 404", rec.Code, rec.Body)
+	}
+
+	do(h, "POST", "/api/patterns", goodBody)
+	do(h, "POST", "/api/battles", `{"patternAId":"p_000001","patternBId":"p_000002"}`)
+	do(h, "POST", "/api/battles/b_000003/votes", `{"side":"a"}`)
+
+	rec = do(h, "GET", "/api/patterns/p_000001/history", "")
+	want := `[{"battleId":"b_000003","before":1000,"after":1016,"at":"2026-10-26T21:00:00Z"}]`
+	if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != want {
+		t.Fatalf("voter history = %d %s, want 200 %s", rec.Code, rec.Body, want)
 	}
 }
 

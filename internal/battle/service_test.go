@@ -17,7 +17,7 @@ func (c *clock) now() time.Time { return c.t }
 func newService(t *testing.T, random []byte) (*battle.Service, *clock) {
 	t.Helper()
 	c := &clock{t: time.Date(2026, 10, 26, 21, 0, 0, 123, time.UTC)}
-	return battle.NewService(memstore.NewStore(), memstore.NewBattles(), memstore.NewQueue(), c.now, bytes.NewReader(random)), c
+	return battle.NewService(memstore.NewStore(), memstore.NewBattles(), memstore.NewQueue(), memstore.NewHistory(), c.now, bytes.NewReader(random)), c
 }
 
 func input(name string) battle.Input {
@@ -557,6 +557,48 @@ func TestRecord(t *testing.T) {
 
 	if _, err := svc.Record("p_nope"); !errors.Is(err, battle.ErrNotFound) {
 		t.Errorf("Record(unknown) err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestHistory(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0, 3, 0, 0})
+	a, _ := svc.Create(input("a"))
+	b, _ := svc.Create(input("b"))
+
+	history, err := svc.History(a.ID)
+	if err != nil || len(history) != 0 {
+		t.Fatalf("History(a) before any battle = %+v, %v, want empty", history, err)
+	}
+
+	created, err := svc.CreateBattle(battle.BattleInput{PatternAID: a.ID, PatternBID: b.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.VoteBattle(created.ID, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.VoteBattle(created.ID, "b"); err != nil {
+		t.Fatal(err)
+	}
+
+	history, err = svc.History(a.ID)
+	if err != nil || len(history) != 2 {
+		t.Fatalf("History(a) = %+v, %v, want 2 entries", history, err)
+	}
+	if history[0].BattleID != created.ID || history[0].Before != 1016 || history[0].After != 999 {
+		t.Errorf("History(a)[0] (newest) = %+v, want {before:1016 after:999}", history[0])
+	}
+	if history[1].BattleID != created.ID || history[1].Before != 1000 || history[1].After != 1016 {
+		t.Errorf("History(a)[1] (oldest) = %+v, want {before:1000 after:1016}", history[1])
+	}
+
+	gotA, _ := svc.Get(a.ID)
+	if history[0].After != gotA.Rating {
+		t.Errorf("newest entry's after = %d, want current rating %d", history[0].After, gotA.Rating)
+	}
+
+	if _, err := svc.History("p_nope"); !errors.Is(err, battle.ErrNotFound) {
+		t.Errorf("History(unknown) err = %v, want ErrNotFound", err)
 	}
 }
 
