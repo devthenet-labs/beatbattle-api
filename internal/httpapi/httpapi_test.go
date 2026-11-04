@@ -289,6 +289,65 @@ func TestListCarriesParentIDAndRemixCountInOrder(t *testing.T) {
 	}
 }
 
+func TestListPatternsQFiltersCaseInsensitive(t *testing.T) {
+	h := newHandler()
+	do(h, "POST", "/api/patterns", goodBody)
+	secondBody := strings.Replace(goodBody, `"name":"Four"`, `"name":"Groovy Kick"`, 1)
+	do(h, "POST", "/api/patterns", secondBody)
+	rec := do(h, "GET", "/api/patterns?q=GROOVY", "")
+	if rec.Code != 200 {
+		t.Fatalf("GET /api/patterns?q=GROOVY = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"p_000002"`) {
+		t.Errorf("body lacks matching id p_000002: %s", body)
+	}
+	if strings.Contains(body, `"p_000001"`) {
+		t.Errorf("body contains non-matching id p_000001: %s", body)
+	}
+}
+
+func TestListPatternsEmptyQIsFullList(t *testing.T) {
+	h := newHandler()
+	do(h, "POST", "/api/patterns", goodBody)
+	withQ := do(h, "GET", "/api/patterns?q=", "")
+	plain := do(h, "GET", "/api/patterns", "")
+	if withQ.Code != 200 || plain.Code != 200 {
+		t.Fatalf("GET /api/patterns?q= = %d, GET /api/patterns = %d, want 200, 200", withQ.Code, plain.Code)
+	}
+	if withQ.Body.String() != plain.Body.String() {
+		t.Errorf("?q= body = %s, want identical to plain list body %s", withQ.Body, plain.Body)
+	}
+}
+
+func TestListPatternsQWithLimit(t *testing.T) {
+	h := newHandler()
+	do(h, "POST", "/api/patterns", strings.Replace(goodBody, `"name":"Four"`, `"name":"Limitcase One"`, 1))
+	do(h, "POST", "/api/patterns", strings.Replace(goodBody, `"name":"Four"`, `"name":"Limitcase Two"`, 1))
+	do(h, "POST", "/api/patterns", strings.Replace(goodBody, `"name":"Four"`, `"name":"Limitcase Three"`, 1))
+	rec := do(h, "GET", "/api/patterns?q=limitcase&limit=2", "")
+	if rec.Code != 200 {
+		t.Fatalf("GET /api/patterns?q=limitcase&limit=2 = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	var got []map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Errorf("len(got) = %d, want 2", len(got))
+	}
+}
+
+func TestListPatternsQInvalidLimitStays400(t *testing.T) {
+	rec := do(newHandler(), "GET", "/api/patterns?q=x&limit=0", "")
+	if rec.Code != 400 {
+		t.Fatalf("GET /api/patterns?q=x&limit=0 = %d, want 400: %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), "limit must be a positive integer") {
+		t.Errorf("body = %s, want limit error", rec.Body)
+	}
+}
+
 func TestRatingsRoute(t *testing.T) {
 	h := newHandler()
 	do(h, "POST", "/api/patterns", goodBody)
