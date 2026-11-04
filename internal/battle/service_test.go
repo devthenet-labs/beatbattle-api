@@ -235,6 +235,59 @@ func TestSearchEmptyQueryMatchesEverything(t *testing.T) {
 	}
 }
 
+func inputBPM(name string, bpm int) battle.Input {
+	in := input(name)
+	in.BPM = bpm
+	return in
+}
+
+func TestListFilteredBPMRangeNewestFirst(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0, 3, 0, 0, 4, 0, 0})
+	if _, err := svc.Create(inputBPM("x", 60)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Create(inputBPM("x", 90)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Create(inputBPM("x", 150)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Create(inputBPM("x", 95)); err != nil {
+		t.Fatal(err)
+	}
+	min, max := 80, 100
+	got := svc.ListFiltered("", &min, &max, battle.MaxLimit)
+	if len(got) != 2 {
+		t.Fatalf("ListFiltered(80..100) = %d items, want 2", len(got))
+	}
+	if got[0].ID != "p_040000" || got[1].ID != "p_020000" {
+		t.Errorf("ListFiltered(80..100) ids = %s, %s, want p_040000, p_020000", got[0].ID, got[1].ID)
+	}
+}
+
+func TestListFilteredNilBoundsMatchesList(t *testing.T) {
+	random := make([]byte, 0, 3*10)
+	for i := 0; i < 10; i++ {
+		random = append(random, byte(i), 0, 0)
+	}
+	svc, _ := newService(t, random)
+	for i := 0; i < 10; i++ {
+		if _, err := svc.Create(input("x")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := svc.List(battle.MaxLimit)
+	got := svc.ListFiltered("", nil, nil, battle.MaxLimit)
+	if len(got) != len(want) {
+		t.Fatalf("ListFiltered(nil, nil) = %d items, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i].ID != want[i].ID {
+			t.Errorf("ListFiltered(nil, nil)[%d] = %s, want %s", i, got[i].ID, want[i].ID)
+		}
+	}
+}
+
 func TestRemix(t *testing.T) {
 	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0})
 	orig, _ := svc.Create(input("orig"))
