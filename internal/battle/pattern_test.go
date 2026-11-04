@@ -285,7 +285,6 @@ func TestPatternFieldOrder(t *testing.T) {
 }
 
 func TestLevel(t *testing.T) {
-	t.Skip("level thresholds under review")
 	cases := []struct {
 		on   int
 		want string
