@@ -31,8 +31,11 @@ Errors are JSON `{"error": "<message>"}`. Request bodies are limited to 16 KiB (
 | `POST /api/battles/{id}/votes`       | 200 with the updated battle; 400 for a missing/invalid `side`; 404 for an unknown battle id; past 3 votes per client per 10 seconds, 429 `too many votes` with `Retry-After` |
 
 A pattern is `{id, parentId, remixCount, name, description, author, bpm, swing, lengthMs, tracks:{kick,snare,hat},
-votes, rating, createdAt}`; each track is exactly 16 booleans. `name` is 1-40 characters after trimming with no
-control characters, `author` 1-24 of `[A-Za-z0-9_-]`, `bpm` an integer 60-200, `swing` an integer 0-60. `description`
+votes, rating, createdAt, level}`; each track is exactly 16 booleans. `level` is derived from the pattern's 48 steps
+(16 per track, 3 tracks): `sparse` when fewer than 8 are on, `busy` when more than 24 are on, `groove` otherwise. It
+cannot be set by a client and is not stored; it is recomputed from `tracks` on every response. `name` is 1-40
+characters after trimming with no control characters, `author` 1-24 of `[A-Za-z0-9_-]`, `bpm` an integer 60-200,
+`swing` an integer 0-60. `description`
 is optional, 0-140 characters after trimming with no control characters (longer, or one with a control character, is
 400); it is `""` when not given and is not copied by `POST /api/patterns/{id}/remix`. `lengthMs` is how long one pass
 of the pattern's 16 steps lasts at its `bpm`, in whole milliseconds (16 sixteenth notes: `60000 / bpm * 4`, rounded to

@@ -24,6 +24,8 @@ var trackNames = []string{"kick", "snare", "hat"}
 // Pattern is a stored 16-step drum pattern, in the shared JSON shape. The
 // field order of ID, ParentID, RemixCount, Name matters: it fixes the served
 // JSON key order that the list acceptance checks depend on. Do not reorder.
+// Level is a derived method, not a field; MarshalJSON appends it as "level"
+// after all of these fields on serialization.
 type Pattern struct {
 	ID          string            `json:"id"`
 	ParentID    string            `json:"parentId"`
@@ -38,6 +40,38 @@ type Pattern struct {
 	Votes       int               `json:"votes"`
 	Rating      int               `json:"rating"`
 	CreatedAt   time.Time         `json:"createdAt"`
+}
+
+// Level derives a coarse density label from the on-steps across all of p's
+// tracks (48 cells total): "sparse" below 8, "busy" above 24, "groove"
+// otherwise.
+func (p Pattern) Level() string {
+	on := 0
+	for _, name := range trackNames {
+		for _, s := range p.Tracks[name] {
+			if s {
+				on++
+			}
+		}
+	}
+	switch {
+	case on < 8:
+		return "sparse"
+	case on > 24:
+		return "busy"
+	default:
+		return "groove"
+	}
+}
+
+// MarshalJSON serializes p's existing fields unchanged, then appends
+// "level" after them.
+func (p Pattern) MarshalJSON() ([]byte, error) {
+	type patternAlias Pattern
+	return json.Marshal(struct {
+		patternAlias
+		Level string `json:"level"`
+	}{patternAlias(p), p.Level()})
 }
 
 // LengthMs returns how long one pass of Steps sixteenth notes lasts at

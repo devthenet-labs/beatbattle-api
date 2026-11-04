@@ -274,4 +274,88 @@ func TestPatternFieldOrder(t *testing.T) {
 	if !(idIdx < parentIdx && parentIdx < remixIdx && remixIdx < nameIdx) {
 		t.Errorf("key order = id:%d parentId:%d remixCount:%d name:%d, want ascending", idIdx, parentIdx, remixIdx, nameIdx)
 	}
+	createdAtIdx := strings.Index(s, `"createdAt"`)
+	levelIdx := strings.Index(s, `"level"`)
+	if createdAtIdx < 0 || levelIdx < 0 {
+		t.Fatalf("missing expected keys: %s", s)
+	}
+	if !(createdAtIdx < levelIdx) {
+		t.Errorf("key order = createdAt:%d level:%d, want level after createdAt", createdAtIdx, levelIdx)
+	}
+}
+
+func TestLevel(t *testing.T) {
+	cases := []struct {
+		on   int
+		want string
+	}{
+		{0, "sparse"},
+		{7, "sparse"},
+		{8, "groove"},
+		{16, "groove"},
+		{24, "groove"},
+		{25, "busy"},
+		{48, "busy"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.want, func(t *testing.T) {
+			kick, snare, hat := split3(tc.on)
+			p := Pattern{Tracks: map[string][]bool{
+				"kick":  steps(kick...),
+				"snare": steps(snare...),
+				"hat":   steps(hat...),
+			}}
+			if got := p.Level(); got != tc.want {
+				t.Errorf("on=%d: Level() = %q, want %q", tc.on, got, tc.want)
+			}
+		})
+	}
+}
+
+// split3 returns three slices of step indexes (each within 0-15, no
+// track repeating an index) whose lengths sum to on, spread across the
+// three tracks.
+func split3(on int) (kick, snare, hat []int) {
+	tracks := [3]*[]int{&kick, &snare, &hat}
+	for i := 0; i < on; i++ {
+		t := tracks[i%3]
+		*t = append(*t, i/3)
+	}
+	return
+}
+
+func TestPatternMarshalsLevel(t *testing.T) {
+	p := Pattern{
+		ID: "p_x", BPM: 120,
+		Tracks: map[string][]bool{
+			"kick":  steps(0, 4, 8, 12),
+			"snare": steps(4, 12),
+			"hat":   steps(0, 2),
+		},
+	}
+	b, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["level"] != p.Level() {
+		t.Errorf(`level = %v, want %q`, got["level"], p.Level())
+	}
+	if got["id"] != "p_x" {
+		t.Errorf(`id = %v, want "p_x"`, got["id"])
+	}
+	if got["bpm"] != float64(120) {
+		t.Errorf("bpm = %v, want 120", got["bpm"])
+	}
+	tracks, ok := got["tracks"].(map[string]any)
+	if !ok {
+		t.Fatalf("tracks = %v, want object", got["tracks"])
+	}
+	kick, ok := tracks["kick"].([]any)
+	if !ok || len(kick) != Steps {
+		t.Errorf("tracks.kick = %v, want %d-element array", tracks["kick"], Steps)
+	}
 }
