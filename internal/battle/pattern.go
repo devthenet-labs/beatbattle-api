@@ -55,7 +55,7 @@ func (p Pattern) Level() string {
 		}
 	}
 	switch {
-	case on < 8:
+	case on <= 8:
 		return "sparse"
 	case on > 24:
 		return "busy"
