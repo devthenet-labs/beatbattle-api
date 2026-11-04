@@ -98,11 +98,16 @@ func (a *api) listPatterns(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = n
 	}
-	if q := r.URL.Query().Get("q"); q != "" {
-		writeJSON(w, http.StatusOK, a.svc.Search(q, limit))
+	minBPM, maxBPM, ok := parseBPMRange(w, r)
+	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, a.svc.List(limit))
+	q := r.URL.Query().Get("q")
+	if q == "" && minBPM == nil && maxBPM == nil {
+		writeJSON(w, http.StatusOK, a.svc.List(limit))
+		return
+	}
+	writeJSON(w, http.StatusOK, a.svc.ListFiltered(q, minBPM, maxBPM, limit))
 }
 
 func (a *api) listAuthorPatterns(w http.ResponseWriter, r *http.Request) {
@@ -271,6 +276,41 @@ func (a *api) getRender(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, job)
+}
+
+// parseBPMRange parses minBpm and maxBpm from r's query, answering 400
+// itself for a bound that is not a whole number from 60 to 200, or for
+// minBpm above maxBpm. A bound that is absent from the query is nil.
+func parseBPMRange(w http.ResponseWriter, r *http.Request) (minBPM, maxBPM *int, ok bool) {
+	minBPM, ok = parseBPMBound(w, r, "minBpm")
+	if !ok {
+		return nil, nil, false
+	}
+	maxBPM, ok = parseBPMBound(w, r, "maxBpm")
+	if !ok {
+		return nil, nil, false
+	}
+	if minBPM != nil && maxBPM != nil && *minBPM > *maxBPM {
+		writeError(w, http.StatusBadRequest, "minBpm must not be greater than maxBpm")
+		return nil, nil, false
+	}
+	return minBPM, maxBPM, true
+}
+
+// parseBPMBound parses name from r's query; "" (absent) answers a nil
+// bound. It answers 400 itself for a value that is not a whole number
+// from 60 to 200.
+func parseBPMBound(w http.ResponseWriter, r *http.Request, name string) (*int, bool) {
+	raw := r.URL.Query().Get(name)
+	if raw == "" {
+		return nil, true
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 60 || n > 200 {
+		writeError(w, http.StatusBadRequest, name+" must be an integer from 60 to 200")
+		return nil, false
+	}
+	return &n, true
 }
 
 // readBody reads the whole body under the size limit, answering 413 itself.

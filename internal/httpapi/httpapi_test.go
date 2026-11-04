@@ -78,6 +78,13 @@ func TestRoutes(t *testing.T) {
 		{"list limit", "GET", "/api/patterns?limit=1", "", 200, `"p_000002"`},
 		{"list bad limit", "GET", "/api/patterns?limit=x", "", 400, `"error"`},
 		{"list zero limit", "GET", "/api/patterns?limit=0", "", 400, `"error"`},
+		{"list bpm range", "GET", "/api/patterns?minBpm=90&maxBpm=140", "", 200, `"p_000002"`},
+		{"list min bpm only", "GET", "/api/patterns?minBpm=61", "", 200, `"p_000002"`},
+		{"list min bpm too low", "GET", "/api/patterns?minBpm=59", "", 400, `"error"`},
+		{"list max bpm too high", "GET", "/api/patterns?maxBpm=201", "", 400, `"error"`},
+		{"list min bpm not whole", "GET", "/api/patterns?minBpm=61.5", "", 400, `"error"`},
+		{"list min bpm not numeric", "GET", "/api/patterns?minBpm=x", "", 400, `"error"`},
+		{"list min bpm above max bpm", "GET", "/api/patterns?minBpm=150&maxBpm=100", "", 400, `"error"`},
 		{"author list", "GET", "/api/authors/brvtl/patterns", "", 200, `"author":"brvtl"`},
 		{"author list unknown author", "GET", "/api/authors/nope/patterns", "", 200, `[]`},
 		{"author list bad limit", "GET", "/api/authors/brvtl/patterns?limit=x", "", 400, `"error"`},
@@ -345,6 +352,99 @@ func TestListPatternsQInvalidLimitStays400(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "limit must be a positive integer") {
 		t.Errorf("body = %s, want limit error", rec.Body)
+	}
+}
+
+func TestListPatternsBPMRangeFilters(t *testing.T) {
+	h := newHandler()
+	do(h, "POST", "/api/patterns", goodBody)
+	lowBPMBody := strings.Replace(goodBody, `"bpm":120`, `"bpm":90`, 1)
+	do(h, "POST", "/api/patterns", lowBPMBody)
+	rec := do(h, "GET", "/api/patterns?minBpm=85&maxBpm=95", "")
+	if rec.Code != 200 {
+		t.Fatalf("GET /api/patterns?minBpm=85&maxBpm=95 = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"p_000002"`) {
+		t.Errorf("body lacks matching id p_000002: %s", body)
+	}
+	if strings.Contains(body, `"p_000001"`) {
+		t.Errorf("body contains out-of-range id p_000001: %s", body)
+	}
+}
+
+func TestListPatternsBPMRangeInclusiveExact(t *testing.T) {
+	h := newHandler()
+	do(h, "POST", "/api/patterns", goodBody)
+	rec := do(h, "GET", "/api/patterns?minBpm=120&maxBpm=120", "")
+	if rec.Code != 200 {
+		t.Fatalf("GET /api/patterns?minBpm=120&maxBpm=120 = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), `"p_000001"`) {
+		t.Errorf("body lacks id p_000001: %s", rec.Body)
+	}
+}
+
+func TestListPatternsQAndBPMRangeCombine(t *testing.T) {
+	h := newHandler()
+	do(h, "POST", "/api/patterns", strings.Replace(goodBody, `"name":"Four"`, `"name":"Groovy Kick"`, 1))
+	do(h, "POST", "/api/patterns", strings.Replace(goodBody, `"name":"Four"`, `"name":"Other Kick"`, 1))
+	mismatchedBPMBody := strings.Replace(goodBody, `"bpm":120`, `"bpm":90`, 1)
+	do(h, "POST", "/api/patterns", strings.Replace(mismatchedBPMBody, `"name":"Four"`, `"name":"Groovy Snare"`, 1))
+	rec := do(h, "GET", "/api/patterns?q=groovy&minBpm=110&maxBpm=130", "")
+	if rec.Code != 200 {
+		t.Fatalf("GET /api/patterns?q=groovy&minBpm=110&maxBpm=130 = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"p_000001"`) {
+		t.Errorf("body lacks matching id p_000001: %s", body)
+	}
+	if strings.Contains(body, `"p_000002"`) {
+		t.Errorf("body contains id p_000002 (wrong name): %s", body)
+	}
+	if strings.Contains(body, `"p_000003"`) {
+		t.Errorf("body contains id p_000003 (wrong bpm): %s", body)
+	}
+}
+
+func TestListPatternsSingleBPMBound(t *testing.T) {
+	h := newHandler()
+	do(h, "POST", "/api/patterns", strings.Replace(goodBody, `"bpm":120`, `"bpm":150`, 1))
+	do(h, "POST", "/api/patterns", strings.Replace(goodBody, `"bpm":120`, `"bpm":65`, 1))
+
+	minOnly := do(h, "GET", "/api/patterns?minBpm=140", "")
+	if minOnly.Code != 200 {
+		t.Fatalf("GET /api/patterns?minBpm=140 = %d, want 200: %s", minOnly.Code, minOnly.Body)
+	}
+	if !strings.Contains(minOnly.Body.String(), `"p_000001"`) {
+		t.Errorf("minBpm=140 body lacks id p_000001: %s", minOnly.Body)
+	}
+	if strings.Contains(minOnly.Body.String(), `"p_000002"`) {
+		t.Errorf("minBpm=140 body contains out-of-range id p_000002: %s", minOnly.Body)
+	}
+
+	maxOnly := do(h, "GET", "/api/patterns?maxBpm=70", "")
+	if maxOnly.Code != 200 {
+		t.Fatalf("GET /api/patterns?maxBpm=70 = %d, want 200: %s", maxOnly.Code, maxOnly.Body)
+	}
+	if !strings.Contains(maxOnly.Body.String(), `"p_000002"`) {
+		t.Errorf("maxBpm=70 body lacks id p_000002: %s", maxOnly.Body)
+	}
+	if strings.Contains(maxOnly.Body.String(), `"p_000001"`) {
+		t.Errorf("maxBpm=70 body contains out-of-range id p_000001: %s", maxOnly.Body)
+	}
+}
+
+func TestListPatternsNoBPMBoundsUnchanged(t *testing.T) {
+	h := newHandler()
+	do(h, "POST", "/api/patterns", goodBody)
+	plain := do(h, "GET", "/api/patterns", "")
+	withAbsentBounds := do(h, "GET", "/api/patterns?minBpm=&maxBpm=", "")
+	if plain.Code != 200 || withAbsentBounds.Code != 200 {
+		t.Fatalf("GET /api/patterns = %d, GET /api/patterns?minBpm=&maxBpm= = %d, want 200, 200", plain.Code, withAbsentBounds.Code)
+	}
+	if plain.Body.String() != withAbsentBounds.Body.String() {
+		t.Errorf("body with empty bpm bounds = %s, want identical to plain list body %s", withAbsentBounds.Body, plain.Body)
 	}
 }
 

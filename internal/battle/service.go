@@ -194,6 +194,33 @@ func (s *Service) Search(q string, limit int) []Pattern {
 	return out
 }
 
+// ListFiltered returns the newest patterns whose name contains q,
+// ignoring case (an empty q matches every pattern), and whose bpm is
+// within minBPM..maxBPM inclusive (a nil bound is unbounded), newest
+// first. limit is clamped to 1..MaxLimit.
+func (s *Service) ListFiltered(q string, minBPM, maxBPM *int, limit int) []Pattern {
+	limit = max(1, min(limit, MaxLimit))
+	all := s.store.List()
+	counts := remixCounts(all)
+	needle := strings.ToLower(q)
+	out := make([]Pattern, 0, min(limit, len(all)))
+	for i := len(all) - 1; i >= 0 && len(out) < limit; i-- {
+		p := all[i]
+		if !strings.Contains(strings.ToLower(p.Name), needle) {
+			continue
+		}
+		if minBPM != nil && p.BPM < *minBPM {
+			continue
+		}
+		if maxBPM != nil && p.BPM > *maxBPM {
+			continue
+		}
+		p.RemixCount = counts[p.ID]
+		out = append(out, p)
+	}
+	return out
+}
+
 // Leaderboard returns the top patterns by votes.
 func (s *Service) Leaderboard() []Pattern {
 	all := s.store.List()
