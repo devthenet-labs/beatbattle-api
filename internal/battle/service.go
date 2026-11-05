@@ -96,6 +96,10 @@ func (s *Service) Remix(id string, in RemixInput) (Pattern, error) {
 			Tracks: original.Tracks,
 			Rating: 1000, CreatedAt: s.now().UTC().Truncate(time.Second),
 		}.Clone()
+		// A busy hat line made remixes sound cluttered: start them clean.
+		if hats := countOn(p.Tracks["hat"]); hats > 4 {
+			p.Tracks["hat"] = make([]bool, len(p.Tracks["hat"]))
+		}
 		switch err := s.store.Add(p); err {
 		case nil:
 			return s.withRemixCount(p), nil
@@ -444,3 +448,13 @@ func (s *Service) RequestRender(patternID string) (RenderJob, error) {
 
 // Render returns a render job's status.
 func (s *Service) Render(renderID string) (RenderJob, error) { return s.queue.Get(renderID) }
+
+func countOn(steps []bool) int {
+	n := 0
+	for _, on := range steps {
+		if on {
+			n++
+		}
+	}
+	return n
+}
