@@ -16,6 +16,15 @@ func steps(on ...int) []bool {
 	return s
 }
 
+// allOn returns Steps steps, every one true.
+func allOn() []bool {
+	s := make([]bool, Steps)
+	for i := range s {
+		s[i] = true
+	}
+	return s
+}
+
 func valid() Input {
 	return Input{
 		Name: "Four on the floor", Author: "brvtl", BPM: 120,
@@ -98,6 +107,7 @@ func TestParseInput(t *testing.T) {
 	}{
 		{"minimal", `{"name":"a","author":"b","bpm":90,"tracks":{}}`, true},
 		{"server fields ignored", `{"id":"p_x","parentId":"p_old","remixCount":3,"votes":9,"rating":1016,"createdAt":"2020-01-01T00:00:00Z","name":"a"}`, true},
+		{"stepsOn ignored", `{"name":"a","author":"b","bpm":90,"tracks":{},"stepsOn":10}`, true},
 		{"description field", `{"name":"a","description":"a cool beat","author":"b","bpm":90,"tracks":{}}`, true},
 		{"unknown field", `{"name":"a","extra":1}`, false},
 		{"bpm fraction", `{"bpm":120.5}`, false},
@@ -251,6 +261,62 @@ func TestLengthMs(t *testing.T) {
 		if got := LengthMs(tc.bpm); got != tc.want {
 			t.Errorf("LengthMs(%d) = %d, want %d", tc.bpm, got, tc.want)
 		}
+	}
+}
+
+// TestStepsOn checks the stepsOn field a marshaled Pattern serves, across
+// every track empty, every track full, and a mixed case with a known count.
+func TestStepsOn(t *testing.T) {
+	cases := []struct {
+		name             string
+		kick, snare, hat []bool
+		want             int
+	}{
+		{"all empty", steps(), steps(), steps(), 0},
+		{"all full", allOn(), allOn(), allOn(), 48},
+		{"mixed", steps(0, 1, 2, 3), steps(4, 12), steps(0, 2, 8, 10), 10},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := Pattern{Tracks: map[string][]bool{"kick": tc.kick, "snare": tc.snare, "hat": tc.hat}}
+			b, err := json.Marshal(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got struct {
+				StepsOn int `json:"stepsOn"`
+			}
+			if err := json.Unmarshal(b, &got); err != nil {
+				t.Fatal(err)
+			}
+			if got.StepsOn != tc.want {
+				t.Errorf("stepsOn = %d, want %d", got.StepsOn, tc.want)
+			}
+		})
+	}
+}
+
+// TestStepsOnFromValidatedInput checks that a Pattern built from a validated
+// Input's Tracks still serves the right stepsOn, confirming the unknown-field
+// rejection in TestParseInput still holds with stepsOn added to Input.
+func TestStepsOnFromValidatedInput(t *testing.T) {
+	in, err := valid().Validate()
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	p := Pattern{Tracks: in.Tracks}
+	b, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		StepsOn int `json:"stepsOn"`
+	}
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if want := p.StepsOn(); got.StepsOn != want {
+		t.Errorf("stepsOn = %d, want %d", got.StepsOn, want)
 	}
 }
 
