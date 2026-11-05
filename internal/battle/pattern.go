@@ -47,6 +47,30 @@ func LengthMs(bpm int) int {
 	return int(math.Round(60000.0 / float64(bpm) * 4))
 }
 
+// StepsOn returns the number of true entries across kick, snare and hat
+// together (0 to 48).
+func (p Pattern) StepsOn() int {
+	n := 0
+	for _, name := range trackNames {
+		for _, on := range p.Tracks[name] {
+			if on {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// MarshalJSON serves StepsOn as the trailing stepsOn field, after every
+// field Pattern already declares, so TestPatternFieldOrder is unaffected.
+func (p Pattern) MarshalJSON() ([]byte, error) {
+	type patternAlias Pattern
+	return json.Marshal(struct {
+		patternAlias
+		StepsOn int `json:"stepsOn"`
+	}{patternAlias(p), p.StepsOn()})
+}
+
 // RatingEntry is the reduced shape served by GET /api/ratings.
 type RatingEntry struct {
 	ID     string `json:"id"`
@@ -80,6 +104,7 @@ type Input struct {
 	Votes       json.RawMessage   `json:"votes"`
 	Rating      json.RawMessage   `json:"rating"`
 	CreatedAt   json.RawMessage   `json:"createdAt"`
+	StepsOn     json.RawMessage   `json:"stepsOn"`
 }
 
 // ErrInvalid marks every validation failure; the message says what is wrong.
