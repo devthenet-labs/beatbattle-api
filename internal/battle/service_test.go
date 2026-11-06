@@ -167,6 +167,34 @@ func TestListByAuthorUnknownAuthorIsEmpty(t *testing.T) {
 	}
 }
 
+func TestRemixTotalSumsAcrossAuthorsPatterns(t *testing.T) {
+	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0, 3, 0, 0, 4, 0, 0, 5, 0, 0, 6, 0, 0, 7, 0, 0})
+	a, _ := svc.Create(inputAuthor("a", "brvtl"))
+	b, _ := svc.Create(inputAuthor("b", "brvtl"))
+	other, _ := svc.Create(inputAuthor("c", "other"))
+	if got := svc.RemixTotal("brvtl"); got != 0 {
+		t.Fatalf("RemixTotal before any remix = %d, want 0", got)
+	}
+	if _, err := svc.Remix(a.ID, battle.RemixInput{Name: "r1", Author: "other"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Remix(a.ID, battle.RemixInput{Name: "r2", Author: "other"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Remix(b.ID, battle.RemixInput{Name: "r3", Author: "other"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Remix(other.ID, battle.RemixInput{Name: "r4", Author: "other"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := svc.RemixTotal("brvtl"); got != 3 {
+		t.Errorf("RemixTotal(brvtl) = %d, want 3", got)
+	}
+	if got := svc.RemixTotal("nope"); got != 0 {
+		t.Errorf("RemixTotal(nope) = %d, want 0", got)
+	}
+}
+
 func TestSearchFiltersCaseInsensitiveNewestFirst(t *testing.T) {
 	svc, _ := newService(t, []byte{1, 0, 0, 2, 0, 0, 3, 0, 0})
 	if _, err := svc.Create(input("Groovy Kick")); err != nil {

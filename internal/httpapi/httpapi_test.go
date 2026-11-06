@@ -81,6 +81,7 @@ func TestRoutes(t *testing.T) {
 		{"author list", "GET", "/api/authors/brvtl/patterns", "", 200, `"author":"brvtl"`},
 		{"author list unknown author", "GET", "/api/authors/nope/patterns", "", 200, `[]`},
 		{"author list bad limit", "GET", "/api/authors/brvtl/patterns?limit=x", "", 400, `"error"`},
+		{"author remixes, no patterns", "GET", "/api/authors/nope/remixes", "", 200, `{"author":"nope","remixTotal":0}`},
 		{"get", "GET", "/api/patterns/p_000001", "", 200, `"name":"Four"`},
 		{"get unknown", "GET", "/api/patterns/p_zzzzzz", "", 404, `"error"`},
 		{"record", "GET", "/api/patterns/p_000001/record", "", 200, `{"wins":0,"losses":0,"battles":0}`},
@@ -89,6 +90,7 @@ func TestRoutes(t *testing.T) {
 		{"vote again", "POST", "/api/patterns/p_000001/votes", "", 200, `{"votes":2}`},
 		{"vote unknown", "POST", "/api/patterns/p_zzzzzz/votes", "", 404, `"error"`},
 		{"remix", "POST", "/api/patterns/p_000001/remix", `{"name":"remix","author":"other"}`, 201, `"parentId":"p_000001"`},
+		{"author remixes after one remix", "GET", "/api/authors/brvtl/remixes", "", 200, `{"author":"brvtl","remixTotal":1}`},
 		{"remix unknown", "POST", "/api/patterns/p_zzzzzz/remix", `{"name":"a","author":"b"}`, 404, `"error"`},
 		{"remix empty name", "POST", "/api/patterns/p_000001/remix", `{"name":"","author":"b"}`, 400, `"error"`},
 		{"remix unknown field", "POST", "/api/patterns/p_000001/remix", `{"name":"a","author":"b","bpm":120}`, 400, `"error"`},
@@ -104,6 +106,8 @@ func TestRoutes(t *testing.T) {
 			strings.Replace(goodBody, `"name"`, `"description":"a cool beat","name"`, 1), 201, `"description":"a cool beat"`},
 		{"create description too long", "POST", "/api/patterns",
 			strings.Replace(goodBody, `"name"`, `"description":"`+strings.Repeat("d", 141)+`","name"`, 1), 400, `"error"`},
+		{"remix again", "POST", "/api/patterns/p_000001/remix", `{"name":"remix2","author":"other"}`, 201, `"parentId":"p_000001"`},
+		{"author remixes after two remixes", "GET", "/api/authors/brvtl/remixes", "", 200, `{"author":"brvtl","remixTotal":2}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
