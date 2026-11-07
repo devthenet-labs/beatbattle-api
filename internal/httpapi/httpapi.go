@@ -26,6 +26,7 @@ func New(svc *battle.Service, revision string, now func() time.Time) http.Handle
 	mux.HandleFunc("POST /api/patterns", a.createPattern)
 	mux.HandleFunc("GET /api/patterns", a.listPatterns)
 	mux.HandleFunc("GET /api/authors/{author}/patterns", a.listAuthorPatterns)
+	mux.HandleFunc("GET /api/authors/{author}/remixes", a.authorRemixTotal)
 	mux.HandleFunc("GET /api/patterns/{id}", a.getPattern)
 	mux.HandleFunc("GET /api/patterns/{id}/record", a.getRecord)
 	mux.HandleFunc("GET /api/patterns/{id}/history", a.getHistory)
@@ -116,6 +117,14 @@ func (a *api) listAuthorPatterns(w http.ResponseWriter, r *http.Request) {
 		limit = n
 	}
 	writeJSON(w, http.StatusOK, a.svc.ListByAuthor(r.PathValue("author"), limit))
+}
+
+func (a *api) authorRemixTotal(w http.ResponseWriter, r *http.Request) {
+	author := r.PathValue("author")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"author":     author,
+		"remixTotal": a.svc.RemixTotal(author),
+	})
 }
 
 func (a *api) getPattern(w http.ResponseWriter, r *http.Request) {

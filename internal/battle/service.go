@@ -174,6 +174,20 @@ func (s *Service) ListByAuthor(author string, limit int) []Pattern {
 	return out
 }
 
+// RemixTotal returns the sum of RemixCount over every pattern by author,
+// 0 for an author with no patterns.
+func (s *Service) RemixTotal(author string) int {
+	all := s.store.List()
+	counts := remixCounts(all)
+	total := 0
+	for _, p := range all {
+		if p.Author == author {
+			total += counts[p.ID]
+		}
+	}
+	return total
+}
+
 // Search returns the newest patterns whose name contains q, ignoring
 // case, newest first. An empty q matches every pattern. limit is
 // clamped to 1..MaxLimit.
