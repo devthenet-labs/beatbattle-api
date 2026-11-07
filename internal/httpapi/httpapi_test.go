@@ -92,6 +92,8 @@ func TestRoutes(t *testing.T) {
 		{"remix unknown", "POST", "/api/patterns/p_zzzzzz/remix", `{"name":"a","author":"b"}`, 404, `"error"`},
 		{"remix empty name", "POST", "/api/patterns/p_000001/remix", `{"name":"","author":"b"}`, 400, `"error"`},
 		{"remix unknown field", "POST", "/api/patterns/p_000001/remix", `{"name":"a","author":"b","bpm":120}`, 400, `"error"`},
+		{"author remix total", "GET", "/api/authors/brvtl/remixes", "", 200, `{"author":"brvtl","remixTotal":1}`},
+		{"author remix total unknown author", "GET", "/api/authors/nope/remixes", "", 200, `{"author":"nope","remixTotal":0}`},
 		{"leaderboard", "GET", "/api/leaderboard", "", 200, `"votes":2`},
 		{"render", "POST", "/api/patterns/p_000001/renders", "", 202, `"status":"pending"`},
 		{"render unknown pattern", "POST", "/api/patterns/p_zzzzzz/renders", "", 404, `"error"`},
